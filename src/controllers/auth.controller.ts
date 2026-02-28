@@ -2,11 +2,9 @@ import {Request, Response} from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { PrismaClient } from '@prisma/client'
-import { withAccelerate } from '@prisma/extension-accelerate';
 
-const prisma = new PrismaClient({
-    accelerateUrl: process.env.DATABASE_URL as string
-}).$extends(withAccelerate());
+
+const prisma = new PrismaClient();
 
 //SIGN UP
 export const registerUser = async( req: Request, res: Response): Promise<any>=>{

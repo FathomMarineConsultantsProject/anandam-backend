@@ -1,14 +1,191 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
-  provider = "prisma-client"
-  output   = "../src/generated/prisma"
+  provider = "prisma-client-js"
+
 }
 
 datasource db {
   provider = "postgresql"
+}
+
+// USERS
+model User {
+  id            String    @id @default(uuid())
+  email         String    @unique
+  passwordHash  String
+  fullName      String
+  rank          String?
+  vessel        String?
+  contractStart DateTime?
+  contractEnd   DateTime?
+
+  // Relationships
+  moodLogs     MoodLog[]
+  habits       Habit[]
+  dailyPlans   DailyPlan[]
+  workShifts   WorkShift[]
+  emergencies  EmergencyAlert[]
+  fitnessStats DailyFitnessStat[]
+  workoutLogs  WorkoutLog[]
+  vrEquipment  VREquipment?
+  challenges   ChallengeProgress[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+//MOOD and Wellness
+model MoodLog {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
+  // Storing as integers (0-10 )
+  moodScore   Int // "Mood Score"
+  energyLevel Int // "Exhausted -> Energized"
+  stressLevel Int // "Very Calm -> Very Stressed"
+
+  loggedAt DateTime @default(now())
+}
+
+// 3. PERFECT DAY & HABITS
+model Habit {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
+  title      String // e.g., "Daily Sea Safety Check"
+  category   String // e.g., "safety", "wellness", "professional"
+  targetDays Int    @default(21) // Days to build the habit
+
+  completions HabitCompletion[]
+
+  createdAt DateTime @default(now())
+}
+
+model HabitCompletion {
+  id      String @id @default(uuid())
+  habitId String
+  habit   Habit  @relation(fields: [habitId], references: [id])
+
+  completedDate DateTime // The day it was checked off
+}
+
+model DailyPlan {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
+  date      DateTime // The day being planned
+  mainFocus String? // e.g., "Maintain calm seas mindset"
+
+  activities Activity[]
+}
+
+model Activity {
+  id          String    @id @default(uuid())
+  dailyPlanId String
+  dailyPlan   DailyPlan @relation(fields: [dailyPlanId], references: [id])
+
+  title           String // e.g., "Sunrise Meditation"
+  category        String // "wellness", "work", "nutrition"
+  startTime       DateTime
+  durationMinutes Int
+  isCompleted     Boolean  @default(false)
+}
+
+// 4. WORK & REST COMPLIANCE (From "Working Schedule" UI)
+model WorkShift {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
+  clockIn    DateTime
+  clockOut   DateTime?
+  location   String // e.g., "Bridge", "Engine Room", "Galley"
+  authMethod String // e.g., "Face Recognition", "PIN Backup"
+
+  createdAt DateTime @default(now())
+}
+
+// 5. EMERGENCY HUB (From "Emergency Response Hub" UI)
+
+model EmergencyAlert {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
+  type   String // "Medical", "Mental Health", "Maritime", "Security"
+  status String @default("ACTIVE") // "ACTIVE", "RESOLVED"
+
+  triggeredAt DateTime  @default(now())
+  resolvedAt  DateTime?
+}
+
+// 6. FITNESS & VR GYM
+
+model DailyFitnessStat {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
+  date DateTime @default(now()) // The day these stats represent
+
+  // Daily Rings / Goals (From "Daily Activity" UI)
+  activeMinutes  Int @default(0)
+  steps          Int @default(0)
+  caloriesBurned Int @default(0)
+
+  // Health Metrics
+  heartRateBpm Int?
+  sleepHours   Float?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, date]) // Ensures only one stat record per user, per day
+}
+
+model WorkoutLog {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
+  name      String // e.g., "VR Ocean Gym", "Deck Strength Training"
+  category  String // "VR", "Cardio", "Yoga", "Strength"
+  intensity String // "low", "medium", "high"
+
+  durationMinutes Int
+  caloriesBurned  Int
+
+  completedAt DateTime @default(now())
+}
+
+model VREquipment {
+  id     String @id @default(uuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id])
+
+  // Equipment Diagnostics
+  headsetBattery     Int    @default(100) // Percentage
+  controllersBattery Int    @default(100) // Percentage
+  trackingQuality    String @default("Excellent")
+  playAreaSize       String @default("3m x 2m")
+
+  lastCalibratedAt DateTime @default(now())
+}
+
+model ChallengeProgress {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
+  challengeName String // e.g., "Nautical November", "Sea Legs Challenge"
+  currentValue  Int // e.g., 15
+  targetValue   Int // e.g., 20
+  unit          String // e.g., "workouts", "sessions"
+
+  deadline    DateTime?
+  isCompleted Boolean   @default(false)
+
+  updatedAt DateTime @updatedAt
 }

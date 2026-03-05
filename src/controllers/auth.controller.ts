@@ -103,3 +103,46 @@ const generateToken = (userId: string) =>{
 
     return {accessToken, refreshToken};
 }
+
+//Refresh token endpoint
+export const refreshAccessToken = async (req: Request, res: Response): Promise<any> =>{
+    try {
+        const {refreshToken} = req.body;
+
+        if(!refreshToken)
+        {
+            return res.status(401).json({error:"Refresh token is expired"});
+        }
+
+        //Check if the token is actually exist in the database
+        const storedToken = await prisma.refreshToken.findUnique({
+            where:{token: refreshToken}
+        });
+
+        if(!storedToken)
+        {
+            return res.status(403).json({error: "Invalid refresh token"});
+        }
+
+        //verify if the token hasn't expired
+        jwt.verify(refreshToken, process.env.JWT_SECRET as string, async (err, decoded: any)=>{
+            if(err)
+            {
+                await prisma.refreshToken.delete({where:{token: refreshToken}});
+                return res.status(403).json({error:"Refresh token expired. Please login again"});
+            }
+            const newAccessToken = jwt.sign(
+                {userId: decoded.userId},
+                process.env.JWT_SECRET as string,
+                {expiresIn: '15m'}
+            );
+            res.status(200).json({
+                status: 'success',
+                accessToken: newAccessToken
+            });
+        });
+    } catch (error) {
+        console.error("Refresh error:", error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+}

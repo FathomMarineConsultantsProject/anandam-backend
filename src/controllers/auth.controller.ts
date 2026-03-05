@@ -24,15 +24,20 @@ export const registerUser = async( req: Request, res: Response): Promise<any>=>{
         const newUser = await prisma.user.create({
             data:{email, passwordHash, fullName, rank, vessel}
         });
-
-        const token = jwt.sign(
-            {userId: newUser.id},
-            process.env.JWT_SECRET as string,
-            {expiresIn: '7d'}
-        );
+        //Generate access and refresh token
+        const {accessToken, refreshToken} = generateToken(newUser.id)
+        
+        await prisma.refreshToken.create({
+            data:{
+                token: refreshToken,
+                userId: newUser.id,
+                expiresAt: new Date(Date.now() +7 * 24 * 60 * 60 * 1000)
+            }
+        });
         res.status(201).json({
             status: 'success',
-            token,
+            accessToken,
+            refreshToken,
             user: {id: newUser.id, email: newUser.email, fullName: newUser.fullName}
         });
     } catch (error) {
@@ -58,19 +63,43 @@ export const loginUser= async(req:Request, res: Response):Promise<any>=>{
             return res.status(401).json({error:'Invalid credentials'});
         }
 
-        const token = jwt.sign(
-            {userId: user.id},
-            process.env.JWT_SECRET as string,
-            {expiresIn:'7d'}
-        );
+        const {accessToken, refreshToken} = generateToken(user.id);
+
+        // Save this new device's session to the database
+        await prisma.refreshToken.create({
+            data: {
+                token: refreshToken,
+                userId: user.id,
+                expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+            }
+        });
+        
 
         return res.status(200).json({
             status:'success',
-            token,
+            accessToken,
+            refreshToken,
             user: {id: user.id, email: user.email, fullName: user.fullName}
         })
     } catch (error) {
         console.error("Login error:", error);
         res.status(500).json({ error: 'Internal server error during login' });
     }
+}
+
+//Helper function to generate tokens
+const generateToken = (userId: string) =>{
+    const accessToken = jwt.sign(
+        {userId},
+        process.env.JWT_SECRET as string,
+        {expiresIn: '15m'}
+    )
+
+    const refreshToken = jwt.sign(
+        {userId},
+        process.env.JWT_SECRET as string,
+        {expiresIn: '7d'}
+    );
+
+    return {accessToken, refreshToken};
 }

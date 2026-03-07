@@ -11,7 +11,7 @@ export const createMoodLog = async(req: Request, res:Response):Promise<any> =>{
 
         if(moodScore<1 || moodScore>10 || energyLevel<0 || energyLevel>10 || stressLevel<0 || stressLevel>10)
         {
-            return res.status(400).json({error: "Score must be between 1 and 5"});
+            return res.status(400).json({error: "Score must be between 1 and 10"});
         }
 
         const newLog = await prisma.moodLog.create({

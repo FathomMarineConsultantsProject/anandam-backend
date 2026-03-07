@@ -29,10 +29,13 @@ model User {
   workoutLogs  WorkoutLog[]
   vrEquipment  VREquipment?
   challenges   ChallengeProgress[]
+  refreshTokens  RefreshToken[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
+
+
 
 //MOOD and Wellness
 model MoodLog {
@@ -189,4 +192,15 @@ model ChallengeProgress {
   isCompleted Boolean   @default(false)
 
   updatedAt DateTime @updatedAt
+}
+
+
+model RefreshToken {
+  id    String @id @default(uuid())
+  token String @unique
+  userId String
+  user User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  expiresAt DateTime
 }

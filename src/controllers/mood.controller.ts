@@ -1,13 +1,14 @@
-import {Request, Response} from 'express';
+import { Response} from 'express';
 import { PrismaClient } from '@prisma/client';
-
+import { AuthRequest } from '../middleware/auth.middleware';
 const prisma = new PrismaClient();
 
 //CREATE MOOD LOG
-export const createMoodLog = async(req: Request, res:Response):Promise<any> =>{
+export const createMoodLog = async(req: AuthRequest, res:Response):Promise<any> =>{
 
     try {
-        const {userId, moodScore, energyLevel, stressLevel} = req.body;
+        const userId = req.user?.userId;
+        const { moodScore, energyLevel, stressLevel} = req.body;
 
         if(moodScore<1 || moodScore>10 || energyLevel<0 || energyLevel>10 || stressLevel<0 || stressLevel>10)
         {
@@ -26,7 +27,7 @@ export const createMoodLog = async(req: Request, res:Response):Promise<any> =>{
 };
 
 //GET MOOD HISTORY
-export const getMyMoodHistory = async(req:Request, res: Response): Promise<any> =>{
+export const getMyMoodHistory = async(req:AuthRequest, res: Response): Promise<any> =>{
     try {
         const userId = req.params.userId as string;
         const history = await prisma.moodLog.findMany({

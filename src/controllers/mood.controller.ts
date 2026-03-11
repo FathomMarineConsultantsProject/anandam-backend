@@ -8,16 +8,33 @@ export const createMoodLog = async(req: AuthRequest, res:Response):Promise<any> 
 
     try {
         const userId = req.user?.userId;
-        const { moodScore, energyLevel, stressLevel} = req.body;
+        const { 
+            moodScore, energyLevel, stressLevel, 
+            hoursOfSleep, currentWorkload, feeling, additionalThoughts, journalEntry 
+        } = req.body;
+
+        if (!userId) {
+            return res.status(401).json({ error: "Unauthorized: Invalid token payload" });
+        }
 
         if(moodScore<1 || moodScore>10 || energyLevel<0 || energyLevel>10 || stressLevel<0 || stressLevel>10)
         {
             return res.status(400).json({error: "Score must be between 1 and 10"});
         }
-
         const newLog = await prisma.moodLog.create({
-            data:{userId, moodScore, energyLevel, stressLevel}
+            data: { 
+                userId, 
+                moodScore, 
+                energyLevel, 
+                stressLevel,
+                hoursOfSleep,
+                currentWorkload,
+                feeling,
+                additionalThoughts,
+                journalEntry
+            }
         });
+        
 
         res.status(201).json({status: 'success', data: newLog});
     } catch (error) {

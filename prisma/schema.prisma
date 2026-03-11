@@ -48,6 +48,12 @@ model MoodLog {
   energyLevel Int // "Exhausted -> Energized"
   stressLevel Int // "Very Calm -> Very Stressed"
 
+  hoursOfSleep       Float?   // Float allows for 7.5 hours, etc.
+  currentWorkload    String?  // e.g., "Light", "Moderate", "Heavy"
+  feeling            String?  // e.g., "Anxious", "Calm", "Homesick"
+  additionalThoughts String?  
+  journalEntry       String?
+
   loggedAt DateTime @default(now())
 }
 

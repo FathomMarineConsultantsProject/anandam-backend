@@ -18,7 +18,7 @@ export const authenticateToken = (req: AuthRequest, res: Response, next: NextFun
         // Extract just the token part
         const token = authHeader.split(' ')[1];
         // Verify the token using your secret key
-        const decoded = jwt.verify(token,process.env.JWT_secret as string) as {userId: string};
+        const decoded = jwt.verify(token,process.env.JWT_ACCESS_SECRET as string) as {userId: string};
 
         //Attaching decoded payload
         req.user = decoded;

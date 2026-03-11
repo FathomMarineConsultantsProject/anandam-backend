@@ -10,14 +10,17 @@ datasource db {
 
 // USERS
 model User {
-  id            String    @id @default(uuid())
-  email         String    @unique
-  passwordHash  String
-  fullName      String
-  rank          String?
-  vessel        String?
-  contractStart DateTime?
-  contractEnd   DateTime?
+  id               String   @id @default(uuid())
+  email            String   @unique
+  passwordHash     String
+  fullName         String
+  rank             String?
+  vessel           String?
+  contractStart    DateTime?
+  contractEnd      DateTime?
+  contactNumber    String?
+  emergencyContact String?
+  homeCountry      String?
 
   // Relationships
   moodLogs     MoodLog[]

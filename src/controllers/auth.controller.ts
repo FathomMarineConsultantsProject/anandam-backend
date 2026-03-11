@@ -91,13 +91,13 @@ export const loginUser= async(req:Request, res: Response):Promise<any>=>{
 const generateToken = (userId: string) =>{
     const accessToken = jwt.sign(
         {userId},
-        process.env.JWT_SECRET as string,
+        process.env.JWT_ACCESS_SECRET as string,
         {expiresIn: '15m'}
     )
 
     const refreshToken = jwt.sign(
         {userId},
-        process.env.JWT_SECRET as string,
+        process.env.JWT_REFRESH_SECRET as string,
         {expiresIn: '7d'}
     );
 
@@ -125,7 +125,7 @@ export const refreshAccessToken = async (req: Request, res: Response): Promise<a
         }
 
         //verify if the token hasn't expired
-        jwt.verify(refreshToken, process.env.JWT_SECRET as string, async (err, decoded: any)=>{
+        jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET as string, async (err, decoded: any)=>{
             if(err)
             {
                 await prisma.refreshToken.delete({where:{token: refreshToken}});
@@ -133,7 +133,7 @@ export const refreshAccessToken = async (req: Request, res: Response): Promise<a
             }
             const newAccessToken = jwt.sign(
                 {userId: decoded.userId},
-                process.env.JWT_SECRET as string,
+                process.env.JWT_ACCESS_SECRET as string,
                 {expiresIn: '15m'}
             );
             res.status(200).json({

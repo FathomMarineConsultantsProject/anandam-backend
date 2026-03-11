@@ -10,15 +10,17 @@ datasource db {
 
 // USERS
 model User {
-  id            String    @id @default(uuid())
-  email         String    @unique
-  passwordHash  String
-  fullName      String
-  rank          String?
-  vessel        String?
-  contractStart DateTime?
-  contractEnd   DateTime?
-  profile       Profile?
+  id               String   @id @default(uuid())
+  email            String   @unique
+  passwordHash     String
+  fullName         String
+  rank             String?
+  vessel           String?
+  contractStart    DateTime?
+  contractEnd      DateTime?
+  contactNumber    String?
+  emergencyContact String?
+  homeCountry      String?
 
   // Relationships
   moodLogs     MoodLog[]
@@ -36,20 +38,6 @@ model User {
   updatedAt DateTime @updatedAt
 }
 
-//User profile
-model Profile {
-  id               String   @id @default(uuid())
-  userId           String   @unique // This makes it a 1-to-1 relationship!
-  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
-  bio              String?  // Optional bio
-  contactNumber    String?
-  emergencyContact String?
-  homeCountry      String?
-  
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
-}
 
 
 //MOOD and Wellness

@@ -16,7 +16,14 @@ const prisma = new PrismaClient();
 app.use(cors());
 app.use(express.json());
 
-
+// --- Health Check Route ---
+app.get('/', (req, res) => {
+    res.status(200).json({ 
+        message: 'Welcome to the Anandam Seafarer App API!',
+        status: 'Active',
+        time: new Date().toISOString()
+    });
+});
 //Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/mood',moodRoutes);

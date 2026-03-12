@@ -22,6 +22,10 @@ app.use('/api/auth', authRoutes);
 app.use('/api/mood',moodRoutes);
 app.use('/api/profile', profileRoutes);
 
-app.listen(PORT, () => {
-    console.log(`Server is running on http://localhost:${PORT}`);
-});
+if (process.env.NODE_ENV !== 'production') {
+    app.listen(PORT, () => {
+        console.log(`Server is running on http://localhost:${PORT}`);
+    });
+}
+
+export default app;

@@ -17,9 +17,23 @@ export const createMoodLog = async(req: AuthRequest, res:Response):Promise<any> 
             return res.status(401).json({ error: "Unauthorized: Invalid token payload" });
         }
 
-        if(moodScore<1 || moodScore>10 || energyLevel<0 || energyLevel>10 || stressLevel<0 || stressLevel>10)
-        {
-            return res.status(400).json({error: "Score must be between 1 and 10"});
+        // Make sure they sent at least ONE piece of data before saving a blank row
+        if (
+            moodScore === undefined && energyLevel === undefined && stressLevel === undefined && 
+            hoursOfSleep === undefined && !currentWorkload && !feeling && !additionalThoughts && !journalEntry
+        ) {
+            return res.status(400).json({ error: "Please provide at least one field to log." });
+        }
+
+        // Validate numbers ONLY if the user decided to provide them
+        if (moodScore !== undefined && (moodScore < 1 || moodScore > 5)) {
+            return res.status(400).json({error: "Mood score must be between 1 and 5"});
+        }
+        if (energyLevel !== undefined && (energyLevel < 0 || energyLevel > 5)) {
+            return res.status(400).json({error: "Energy level must be between 0 and 5"});
+        }
+        if (stressLevel !== undefined && (stressLevel < 0 || stressLevel > 5)) {
+            return res.status(400).json({error: "Stress level must be between 0 and 5"});
         }
         const newLog = await prisma.moodLog.create({
             data: { 
@@ -47,6 +61,9 @@ export const createMoodLog = async(req: AuthRequest, res:Response):Promise<any> 
 export const getMyMoodHistory = async(req:AuthRequest, res: Response): Promise<any> =>{
     try {
         const userId = req.params.userId as string;
+        if (!userId) {
+            return res.status(401).json({ error: "Unauthorized access" });
+        }
         const history = await prisma.moodLog.findMany({
             where:{userId:userId},
             orderBy: {loggedAt: 'desc'}

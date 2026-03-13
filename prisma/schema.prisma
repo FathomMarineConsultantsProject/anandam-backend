@@ -47,9 +47,9 @@ model MoodLog {
   user   User   @relation(fields: [userId], references: [id])
 
   // Storing as integers (0-10 )
-  moodScore   Int // "Mood Score"
-  energyLevel Int // "Exhausted -> Energized"
-  stressLevel Int // "Very Calm -> Very Stressed"
+  moodScore   Int? // "Mood Score"
+  energyLevel Int? // "Exhausted -> Energized"
+  stressLevel Int? // "Very Calm -> Very Stressed"
 
   hoursOfSleep       Float?   // Float allows for 7.5 hours, etc.
   currentWorkload    String?  // e.g., "Light", "Moderate", "Heavy"

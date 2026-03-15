@@ -62,25 +62,29 @@ model MoodLog {
 
 // 3. PERFECT DAY & HABITS
 model Habit {
-  id     String @id @default(uuid())
-  userId String
-  user   User   @relation(fields: [userId], references: [id])
+  id         String   @id @default(uuid())
+  userId     String
+ 
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  title      String // e.g., "Daily Sea Safety Check"
-  category   String // e.g., "safety", "wellness", "professional"
-  targetDays Int    @default(21) // Days to build the habit
+  title      String   // e.g., "Daily Sea Safety Check"
+  category   String   // e.g., "safety", "wellness", "professional"
+  targetDays Int      @default(21) // Days to build the habit
 
   completions HabitCompletion[]
 
-  createdAt DateTime @default(now())
+  createdAt  DateTime @default(now())
 }
 
 model HabitCompletion {
-  id      String @id @default(uuid())
-  habitId String
-  habit   Habit  @relation(fields: [habitId], references: [id])
+  id            String   @id @default(uuid())
+  habitId       String
+  
+  habit         Habit    @relation(fields: [habitId], references: [id], onDelete: Cascade)
 
   completedDate DateTime // The day it was checked off
+  
+  @@unique([habitId, completedDate])
 }
 
 model DailyPlan {

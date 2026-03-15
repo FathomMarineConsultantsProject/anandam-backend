@@ -5,8 +5,10 @@ import { PrismaClient } from '@prisma/client';
 
 import authRoutes from './routes/auth.route';
 import moodRoutes from './routes/mood.route';
-import profileRoutes from './routes/profile.route'
-import dailyPlanRoutes from './routes/dailyPlan.route'
+import profileRoutes from './routes/profile.route';
+import dailyPlanRoutes from './routes/dailyPlan.route';
+import habitRouter from './routes/habit.route';
+
 const app = express();
 const PORT = process.env.PORT || 5000;
 
@@ -23,6 +25,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/mood',moodRoutes);
 app.use('/api/profile', profileRoutes);
 app.use('/api/daily-plan', dailyPlanRoutes);
+app.use('/api/habits', habitRouter);
 
 app.listen(PORT, () => {
     console.log(`Server is running on http://localhost:${PORT}`);

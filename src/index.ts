@@ -5,7 +5,11 @@ import { PrismaClient } from '@prisma/client';
 
 import authRoutes from './routes/auth.route';
 import moodRoutes from './routes/mood.route';
-import profileRoutes from './routes/profile.route'
+import profileRoutes from './routes/profile.route';
+import dailyPlanRoutes from './routes/dailyPlan.route';
+import habitRouter from './routes/habit.route';
+import workHoursRouter from './routes/workHours.route';
+
 const app = express();
 const PORT = process.env.PORT || 5000;
 
@@ -28,6 +32,9 @@ app.get('/', (req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/mood',moodRoutes);
 app.use('/api/profile', profileRoutes);
+app.use('/api/daily-plan', dailyPlanRoutes);
+app.use('/api/habits', habitRouter);
+app.use('/api/work-hours', workHoursRouter);
 
 if (process.env.NODE_ENV !== 'production') {
     app.listen(PORT, () => {

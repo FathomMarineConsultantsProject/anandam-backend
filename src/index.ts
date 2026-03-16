@@ -8,6 +8,7 @@ import moodRoutes from './routes/mood.route';
 import profileRoutes from './routes/profile.route';
 import dailyPlanRoutes from './routes/dailyPlan.route';
 import habitRouter from './routes/habit.route';
+import workHoursRouter from './routes/workHours.route';
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -26,6 +27,7 @@ app.use('/api/mood',moodRoutes);
 app.use('/api/profile', profileRoutes);
 app.use('/api/daily-plan', dailyPlanRoutes);
 app.use('/api/habits', habitRouter);
+app.use('/api/work-hours', workHoursRouter);
 
 app.listen(PORT, () => {
     console.log(`Server is running on http://localhost:${PORT}`);

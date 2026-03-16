@@ -24,11 +24,11 @@ export const updateProfile = async (req: AuthRequest, res: Response): Promise<an
                 email,
                 rank,
                 vessel,
-                contractStart,
-                contractEnd,
                 contactNumber,
                 emergencyContact,
-                homeCountry
+                homeCountry,
+                contractStart: contractStart ? new Date(contractStart) : undefined,
+                contractEnd: contractEnd ? new Date(contractEnd) : undefined
             },
             select: { // Tells Prisma exactly what to return to Postman
                 id: true, email: true, fullName: true, rank: true, vessel: true,

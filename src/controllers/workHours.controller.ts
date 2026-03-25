@@ -119,3 +119,28 @@ export const getMyWorkHours = async (req: AuthRequest, res: Response): Promise<a
         res.status(500).json({ error: 'Failed to fetch your work hours' });
     }
 };
+
+// GET ALL MY WORK HOURS (Entire History)
+export const getAllMyWorkHours = async (req: AuthRequest, res: Response): Promise<any> => {
+    try {
+        const userId = req.user?.userId;
+
+        if (!userId) return res.status(401).json({ error: "Unauthorized access" });
+
+        // Use findMany to get every single grid the user has ever saved
+        const myGrids = await prisma.dailyWorkHours.findMany({
+            where: {
+                userId: userId
+            },
+            orderBy: {
+                date: 'desc' // Sorts them from newest to oldest
+            }
+        });
+
+        // Returns an array of all their saved grids!
+        res.status(200).json({ status: 'success', data: myGrids });
+    } catch (error) {
+        console.error("Fetch all my work hours error:", error);
+        res.status(500).json({ error: 'Failed to fetch your work hours history' });
+    }
+};

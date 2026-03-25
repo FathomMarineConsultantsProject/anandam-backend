@@ -42,7 +42,7 @@ export const getDailyGrid = async (req: AuthRequest, res: Response): Promise<any
     }
 };
 
-// 2. SAVE A USER'S GRID SELECTION
+// 2. SAVE A USER'S GRID SELECTION 
 export const saveMyGrid = async (req: AuthRequest, res: Response): Promise<any> => {
     try {
         const userId = req.user?.userId;
@@ -77,5 +77,45 @@ export const saveMyGrid = async (req: AuthRequest, res: Response): Promise<any> 
     } catch (error) {
         console.error("Save grid error:", error);
         res.status(500).json({ error: 'Failed to save grid' });
+    }
+};
+
+// GET MY WORK HOURS (Single User)
+export const getMyWorkHours = async (req: AuthRequest, res: Response): Promise<any> => {
+    try {
+        const userId = req.user?.userId;
+        const { date } = req.params;
+
+        if (!userId) return res.status(401).json({ error: "Unauthorized access" });
+
+
+
+        const targetDate = new Date(date as string);
+
+        const myGrid = await prisma.dailyWorkHours.findUnique({
+            where: {
+                userId_date: { // Uses your @@unique constraint from schema!
+                    userId: userId,
+                    date: targetDate
+                }
+            }
+        });
+
+        // If they haven't painted their grid for this day yet, return an empty 48-block array
+        if (!myGrid) {
+            return res.status(200).json({ 
+                status: 'success', 
+                data: {
+                    userId,
+                    date: targetDate,
+                    workBlocks: new Array(48).fill(false)
+                } 
+            });
+        }
+
+        res.status(200).json({ status: 'success', data: myGrid });
+    } catch (error) {
+        console.error("Fetch my work hours error:", error);
+        res.status(500).json({ error: 'Failed to fetch your work hours' });
     }
 };

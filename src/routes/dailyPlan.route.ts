@@ -6,6 +6,7 @@ import { authenticateToken } from '../middleware/auth.middleware';
 
 const router = Router();
 
+
 // 1. Get all static templates for the frontend UI cards
 router.get('/templates', authenticateToken, getAllTemplates);
 

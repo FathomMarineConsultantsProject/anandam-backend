@@ -1,6 +1,5 @@
 generator client {
   provider = "prisma-client-js"
-
 }
 
 datasource db {
@@ -10,8 +9,8 @@ datasource db {
 
 // USERS
 model User {
-  id               String   @id @default(uuid())
-  email            String   @unique
+  id               String    @id @default(uuid())
+  email            String    @unique
   passwordHash     String
   fullName         String
   rank             String?
@@ -23,22 +22,21 @@ model User {
   homeCountry      String?
 
   // Relationships
-  moodLogs     MoodLog[]
-  habits       Habit[]
-  dailyPlans   DailyPlan[]
-  workHours    DailyWorkHours[]
-  emergencies  EmergencyAlert[]
-  fitnessStats DailyFitnessStat[]
-  workoutLogs  WorkoutLog[]
-  vrEquipment  VREquipment?
-  challenges   ChallengeProgress[]
-  refreshTokens  RefreshToken[]
+  moodLogs      MoodLog[]
+  habits        Habit[]
+  dailyPlans    DailyPlan[]
+  workHours     DailyWorkHours[]
+  emergencies   EmergencyAlert[]
+  fitnessStats  DailyFitnessStat[]
+  workoutLogs   WorkoutLog[]
+  vrEquipment   VREquipment?
+  challenges    ChallengeProgress[]
+  refreshTokens RefreshToken[]
+  passwordReset PasswordReset?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
-
-
 
 //MOOD and Wellness
 model MoodLog {
@@ -51,10 +49,10 @@ model MoodLog {
   energyLevel Int? // "Exhausted -> Energized"
   stressLevel Int? // "Very Calm -> Very Stressed"
 
-  hoursOfSleep       Float?   // Float allows for 7.5 hours, etc.
-  currentWorkload    String?  // e.g., "Light", "Moderate", "Heavy"
-  feeling            String?  // e.g., "Anxious", "Calm", "Homesick"
-  additionalThoughts String?  
+  hoursOfSleep       Float? // Float allows for 7.5 hours, etc.
+  currentWorkload    String? // e.g., "Light", "Moderate", "Heavy"
+  feeling            String? // e.g., "Anxious", "Calm", "Homesick"
+  additionalThoughts String?
   journalEntry       String?
 
   loggedAt DateTime @default(now())
@@ -62,28 +60,28 @@ model MoodLog {
 
 // 3. PERFECT DAY & HABITS
 model Habit {
-  id         String   @id @default(uuid())
-  userId     String
- 
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id     String @id @default(uuid())
+  userId String
 
-  title      String   // e.g., "Daily Sea Safety Check"
-  category   String   // e.g., "safety", "wellness", "professional"
-  targetDays Int      @default(21) // Days to build the habit
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  title      String // e.g., "Daily Sea Safety Check"
+  category   String // e.g., "safety", "wellness", "professional"
+  targetDays Int    @default(21) // Days to build the habit
 
   completions HabitCompletion[]
 
-  createdAt  DateTime @default(now())
+  createdAt DateTime @default(now())
 }
 
 model HabitCompletion {
-  id            String   @id @default(uuid())
-  habitId       String
-  
-  habit         Habit    @relation(fields: [habitId], references: [id], onDelete: Cascade)
+  id      String @id @default(uuid())
+  habitId String
+
+  habit Habit @relation(fields: [habitId], references: [id], onDelete: Cascade)
 
   completedDate DateTime // The day it was checked off
-  
+
   @@unique([habitId, completedDate])
 }
 
@@ -110,27 +108,26 @@ model Activity {
   isCompleted     Boolean  @default(false)
 }
 
-
-
 // --- 4. WORK & REST COMPLIANCE (Interactive Grid) ---
 model DailyWorkHours {
-  id         String   @id @default(uuid())
-  userId     String
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  date       DateTime // The specific day (e.g., March 14, 2026)
+  date DateTime // The specific day (e.g., March 14, 2026)
 
   // This is the magic! An array of exactly 48 booleans.
   // Index 0 = 00:00, Index 1 = 00:30, etc.
   // true = Work (Blue Box), false = Rest (White Box)
-  workBlocks Boolean[] 
+  workBlocks Boolean[]
 
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // A user can only have one grid saved per day!
-  @@unique([userId, date]) 
+  @@unique([userId, date])
 }
+
 // 5. EMERGENCY HUB (From "Emergency Response Hub" UI)
 
 model EmergencyAlert {
@@ -214,13 +211,42 @@ model ChallengeProgress {
   updatedAt DateTime @updatedAt
 }
 
-
 model RefreshToken {
-  id    String @id @default(uuid())
-  token String @unique
+  id     String @id @default(uuid())
+  token  String @unique
   userId String
-  user User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   createdAt DateTime @default(now())
   expiresAt DateTime
+}
+
+model PasswordReset {
+  id String @id @default(uuid())
+
+  // Only one active forgot-password flow per user
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // OTP is NEVER stored as plain text
+  otpHash String
+
+  // OTP validity
+  otpExpiresAt DateTime
+
+  // Number of wrong OTP attempts
+  otpAttempts Int @default(0)
+
+  // Used for "Resend Code in 00:xx"
+  resendAvailableAt DateTime
+
+  // Filled once OTP has been successfully verified
+  verifiedAt DateTime?
+
+  // Temporary token used by the final Create New Password screen
+  resetTokenHash      String?
+  resetTokenExpiresAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }

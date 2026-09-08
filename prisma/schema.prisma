@@ -250,4 +250,3 @@ model PasswordReset {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
-Get-ChildItem prisma\migrations | Select-Object Name

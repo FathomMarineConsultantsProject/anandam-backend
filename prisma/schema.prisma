@@ -9,17 +9,31 @@ datasource db {
 
 // USERS
 model User {
-  id               String    @id @default(uuid())
-  email            String    @unique
-  passwordHash     String
-  fullName         String
-  rank             String?
-  vessel           String?
-  contractStart    DateTime?
-  contractEnd      DateTime?
-  contactNumber    String?
-  emergencyContact String?
-  homeCountry      String?
+  id           String @id @default(uuid())
+  email        String @unique
+  passwordHash String
+  fullName     String
+
+  // Maritime details
+  rank          String?
+  vessel        String?
+  contractStart DateTime?
+  contractEnd   DateTime?
+  homeCountry   String?
+
+  // Contact details
+  contactNumber String?
+
+  // Emergency contact details
+  emergencyContactName         String?
+  emergencyContactRelationship String?
+  emergencyContactNumber       String?
+
+  // Profile avatar
+  // INITIALS = show user's initials
+  // AVATAR   = show one of the predefined avatars
+  avatarMode String  @default("INITIALS")
+  avatarId   String?
 
   // Relationships
   moodLogs      MoodLog[]

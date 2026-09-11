@@ -52,24 +52,38 @@ model User {
   updatedAt DateTime @updatedAt
 }
 
-//MOOD and Wellness
+// MOOD AND WELLNESS
 model MoodLog {
   id     String @id @default(uuid())
   userId String
-  user   User   @relation(fields: [userId], references: [id])
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  // Storing as integers (0-10 )
-  moodScore   Int? // "Mood Score"
-  energyLevel Int? // "Exhausted -> Energized"
-  stressLevel Int? // "Very Calm -> Very Stressed"
+  // QUICK = dashboard mood-only check
+  // FULL  = complete 3-step wellbeing check-in
+  checkinType String @default("FULL")
 
-  hoursOfSleep       Float? // Float allows for 7.5 hours, etc.
-  currentWorkload    String? // e.g., "Light", "Moderate", "Heavy"
-  feeling            String? // e.g., "Anxious", "Calm", "Homesick"
+  // STEP 1 - Wellbeing
+  // All use 1-5
+  moodScore   Int?
+  energyLevel Int?
+  stressLevel Int?
+
+  // STEP 2 - Sleep & Workload
+  hoursOfSleep    Float?
+  currentWorkload String?
+
+  // Optional text from Step 2
   additionalThoughts String?
-  journalEntry       String?
+
+  // STEP 3 - Emotions & Notes
+  // Multiple feelings can be selected
+  feelings String[] @default([])
+
+  journalEntry String?
 
   loggedAt DateTime @default(now())
+
+  @@index([userId, loggedAt])
 }
 
 // 3. PERFECT DAY & HABITS

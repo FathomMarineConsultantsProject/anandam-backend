@@ -1,21 +1,88 @@
-import { Router } from 'express';
-import { getDailyGrid, saveMyGrid, getMyWorkHours, getAllMyWorkHours, logShiftByTime} from '../controllers/workHours.controller';
-import { authenticateToken } from '../middleware/auth.middleware';
+import { Router } from "express";
+
+import {
+  getMyWorkDay,
+  updateMyDaySlots,
+
+  clockIn,
+  clockOut,
+  getActiveSession,
+
+  createManualWorkSession,
+
+  getDailySummary,
+  getMyWorkRestHistory,
+} from "../controllers/workHours.controller";
+
+import {
+  authenticateToken,
+} from "../middleware/auth.middleware";
 
 const router = Router();
 
-// 1. Get the entire grid for everyone on a specific date (e.g., /api/work-hours/2026-03-14)
-router.get('/:date', authenticateToken, getDailyGrid);
 
-// 2. Save the logged-in user's 48-block grid selection
-router.post('/', authenticateToken, saveMyGrid);
+// Selected day
+router.get(
+  "/day/:date",
+  authenticateToken,
+  getMyWorkDay
+);
 
-router.get('/me/history', authenticateToken, getAllMyWorkHours);
 
-router.get('/me/:date', authenticateToken, getMyWorkHours);
+// Change Rest / Meal / Unrecorded
+router.patch(
+  "/day/:date/slots",
+  authenticateToken,
+  updateMyDaySlots
+);
 
-router.post('/shift', authenticateToken, logShiftByTime);
 
+// Current active work session
+router.get(
+  "/sessions/active",
+  authenticateToken,
+  getActiveSession
+);
+
+
+// Live clock in
+router.post(
+  "/sessions/clock-in",
+  authenticateToken,
+  clockIn
+);
+
+
+// Live clock out
+router.post(
+  "/sessions/clock-out",
+  authenticateToken,
+  clockOut
+);
+
+
+// Missed / historical work entry
+router.post(
+  "/sessions/manual",
+  authenticateToken,
+  createManualWorkSession
+);
+
+
+// Daily cards / MLC summary
+router.get(
+  "/summary/:date",
+  authenticateToken,
+  getDailySummary
+);
+
+
+// Work/rest history
+router.get(
+  "/history",
+  authenticateToken,
+  getMyWorkRestHistory
+);
 
 
 export default router;

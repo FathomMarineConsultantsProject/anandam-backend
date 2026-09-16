@@ -40,6 +40,7 @@ model User {
   habits        Habit[]
   dailyPlans    DailyPlan[]
   workHours     DailyWorkHours[]
+  workSessions  WorkSession[]
   emergencies   EmergencyAlert[]
   fitnessStats  DailyFitnessStat[]
   workoutLogs   WorkoutLog[]
@@ -136,24 +137,56 @@ model Activity {
   isCompleted     Boolean  @default(false)
 }
 
-// --- 4. WORK & REST COMPLIANCE (Interactive Grid) ---
+// ======================================================
+// DAILY WORK / REST GRID
+// ======================================================
+
 model DailyWorkHours {
   id     String @id @default(uuid())
   userId String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  date DateTime // The specific day (e.g., March 14, 2026)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  // This is the magic! An array of exactly 48 booleans.
-  // Index 0 = 00:00, Index 1 = 00:30, etc.
-  // true = Work (Blue Box), false = Rest (White Box)
-  workBlocks Boolean[]
+  // Stored as UTC midnight for the selected date
+  date DateTime
+
+  // Exactly 48 half-hour slots:
+  // WORK / REST / MEAL / UNRECORDED
+  statusBlocks String[] @default([])
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // A user can only have one grid saved per day!
   @@unique([userId, date])
+  @@index([userId, date])
+}
+
+// ======================================================
+// WORK SESSION
+// ======================================================
+
+model WorkSession {
+  id     String @id @default(uuid())
+  userId String
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  shipLocation String
+
+  startedAt DateTime
+  endedAt   DateTime?
+
+  // LIVE or MANUAL
+  source String @default("LIVE")
+
+  // ACTIVE or COMPLETED
+  status String @default("ACTIVE")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, startedAt])
+  @@index([userId, status])
 }
 
 // 5. EMERGENCY HUB (From "Emergency Response Hub" UI)

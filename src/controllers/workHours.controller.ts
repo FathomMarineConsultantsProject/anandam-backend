@@ -1,240 +1,1404 @@
-import { Response } from 'express';
-import { PrismaClient } from '@prisma/client';
-import { AuthRequest } from '../middleware/auth.middleware';
+import { Response } from "express";
+import { PrismaClient } from "@prisma/client";
+import { AuthRequest } from "../middleware/auth.middleware";
+
+import {
+  calculateWorkRestSummary,
+} from "../utils/mlcCompliance";
 
 const prisma = new PrismaClient();
 
-// 1. GET THE FULL GRID FOR EVERYONE ON A SPECIFIC DAY
-export const getDailyGrid = async (req: AuthRequest, res: Response): Promise<any> => {
-    try {
-        const targetDate = req.params.date as string;
 
-        const gridDate = new Date(targetDate);
-        gridDate.setUTCHours(0, 0, 0, 0);
+// ======================================================
+// CONSTANTS
+// ======================================================
 
-        // Fetch all users and their 48-block array for today
-        const users = await prisma.user.findMany({
-            select: {
-                id: true,
-                fullName: true,
-                rank: true,
-                workHours: {
-                    where: { date: gridDate },
-                    select: { workBlocks: true } // Only grab the boxes!
-                }
-            }
-        });
+const BLOCKS_PER_DAY = 48;
+const MINUTES_PER_BLOCK = 30;
 
-        // Format the response so it is super easy for React to draw the grid
-        const formattedGrid = users.map(user => ({
-            userId: user.id,
-            fullName: user.fullName,
-            rank: user.rank,
-            // If they haven't saved anything today, send an empty 48-box array of 'false' (Rest)
-            workBlocks: user.workHours.length > 0 
-                ? user.workHours[0].workBlocks 
-                : new Array(48).fill(false) 
-        }));
+const DIRECT_EDIT_STATUSES = [
+  "REST",
+  "MEAL",
+  "UNRECORDED",
+];
 
-        res.status(200).json({ status: 'success', data: formattedGrid });
-    } catch (error) {
-        res.status(500).json({ error: 'Failed to fetch grid' });
-    }
+
+// ======================================================
+// HELPERS
+// ======================================================
+
+const createEmptyBlocks = (): string[] =>
+  new Array(BLOCKS_PER_DAY).fill(
+    "UNRECORDED"
+  );
+
+
+const normalizeBlocks = (
+  blocks?: string[] | null
+): string[] => {
+  if (
+    !Array.isArray(blocks) ||
+    blocks.length !== BLOCKS_PER_DAY
+  ) {
+    return createEmptyBlocks();
+  }
+
+  return [...blocks];
 };
 
-// 2. SAVE A USER'S GRID SELECTION 
-export const saveMyGrid = async (req: AuthRequest, res: Response): Promise<any> => {
-    try {
-        const userId = req.user?.userId;
-        const { targetDate, workBlocks } = req.body; 
 
-        if (!userId) return res.status(401).json({ error: "Unauthorized" });
+const normalizeValue = (
+  value: unknown
+): string =>
+  String(value ?? "")
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, "_");
 
-        // Security check: Make sure the frontend sent exactly 48 boxes!
-        if (!Array.isArray(workBlocks) || workBlocks.length !== 48) {
-            return res.status(400).json({ error: "Invalid grid data. Must provide exactly 48 blocks." });
-        }
 
-        const gridDate = new Date(targetDate);
-        gridDate.setUTCHours(0, 0, 0, 0);
+const getParam = (
+  value: string | string[] | undefined
+): string | undefined => {
+  return Array.isArray(value)
+    ? value[0]
+    : value;
+};
 
-        // UPSERT: Create the day if it's new, or update the existing boxes!
-        const savedGrid = await prisma.dailyWorkHours.upsert({
-            where: {
-                userId_date: { userId, date: gridDate }
+
+// ======================================================
+// DATE HELPERS
+// ======================================================
+
+const parseDateOnly = (
+  value: string
+): Date | null => {
+  if (
+    !/^\d{4}-\d{2}-\d{2}$/.test(value)
+  ) {
+    return null;
+  }
+
+  const date = new Date(
+    `${value}T00:00:00.000Z`
+  );
+
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+
+  if (
+    date.toISOString().slice(0, 10) !==
+    value
+  ) {
+    return null;
+  }
+
+  return date;
+};
+
+
+const getDayStart = (
+  date: Date
+): Date => {
+  return new Date(
+    Date.UTC(
+      date.getUTCFullYear(),
+      date.getUTCMonth(),
+      date.getUTCDate(),
+      0,
+      0,
+      0,
+      0
+    )
+  );
+};
+
+
+const addDays = (
+  date: Date,
+  days: number
+): Date => {
+  const result = new Date(date);
+
+  result.setUTCDate(
+    result.getUTCDate() + days
+  );
+
+  return result;
+};
+
+
+// ======================================================
+// SLOT HELPERS
+// ======================================================
+
+const getSlotTimeRange = (
+  dayStart: Date,
+  slotIndex: number
+) => {
+  const start = new Date(
+    dayStart.getTime() +
+      slotIndex *
+        MINUTES_PER_BLOCK *
+        60 *
+        1000
+  );
+
+  const end = new Date(
+    start.getTime() +
+      MINUTES_PER_BLOCK *
+        60 *
+        1000
+  );
+
+  return {
+    start,
+    end,
+  };
+};
+
+
+const applyIntervalToBlocks = (
+  blocks: string[],
+  dayStart: Date,
+  intervalStart: Date,
+  intervalEnd: Date,
+  status: string
+): string[] => {
+  const result = [...blocks];
+
+  const dayEnd = addDays(
+    dayStart,
+    1
+  );
+
+  const overlapStart =
+    intervalStart > dayStart
+      ? intervalStart
+      : dayStart;
+
+  const overlapEnd =
+    intervalEnd < dayEnd
+      ? intervalEnd
+      : dayEnd;
+
+
+  if (
+    overlapStart >= overlapEnd
+  ) {
+    return result;
+  }
+
+
+  const startMinutes =
+    (overlapStart.getTime() -
+      dayStart.getTime()) /
+    60000;
+
+  const endMinutes =
+    (overlapEnd.getTime() -
+      dayStart.getTime()) /
+    60000;
+
+
+  const startIndex = Math.max(
+    0,
+    Math.floor(
+      startMinutes /
+        MINUTES_PER_BLOCK
+    )
+  );
+
+
+  const endIndex = Math.min(
+    BLOCKS_PER_DAY,
+    Math.ceil(
+      endMinutes /
+        MINUTES_PER_BLOCK
+    )
+  );
+
+
+  for (
+    let index = startIndex;
+    index < endIndex;
+    index++
+  ) {
+    result[index] = status;
+  }
+
+
+  return result;
+};
+
+
+// ======================================================
+// WRITE WORK SESSION INTO GRID
+// Also supports sessions crossing midnight
+// ======================================================
+
+const saveWorkIntervalToGrid =
+  async (
+    userId: string,
+    startedAt: Date,
+    endedAt: Date
+  ) => {
+    let dayCursor =
+      getDayStart(startedAt);
+
+
+    while (
+      dayCursor < endedAt
+    ) {
+      const existing =
+        await prisma.dailyWorkHours.findUnique({
+          where: {
+            userId_date: {
+              userId,
+              date: dayCursor,
             },
-            update: {
-                workBlocks: workBlocks // Overwrite with the new blue/white boxes
+          },
+        });
+
+
+      const blocks =
+        normalizeBlocks(
+          existing?.statusBlocks
+        );
+
+
+      const updated =
+        applyIntervalToBlocks(
+          blocks,
+          dayCursor,
+          startedAt,
+          endedAt,
+          "WORK"
+        );
+
+
+      await prisma.dailyWorkHours.upsert({
+        where: {
+          userId_date: {
+            userId,
+            date: dayCursor,
+          },
+        },
+
+        update: {
+          statusBlocks:
+            updated,
+        },
+
+        create: {
+          userId,
+          date: dayCursor,
+          statusBlocks:
+            updated,
+        },
+      });
+
+
+      dayCursor =
+        addDays(
+          dayCursor,
+          1
+        );
+    }
+  };
+
+
+// ======================================================
+// CHECK OVERLAPPING WORK SESSION
+// ======================================================
+
+const findOverlappingSession =
+  async (
+    userId: string,
+    start: Date,
+    end: Date
+  ) => {
+    return prisma.workSession.findFirst({
+      where: {
+        userId,
+
+        startedAt: {
+          lt: end,
+        },
+
+        OR: [
+          {
+            endedAt: null,
+          },
+
+          {
+            endedAt: {
+              gt: start,
             },
-            create: {
-                userId,
-                date: gridDate,
-                workBlocks: workBlocks
-            }
-        });
-
-        res.status(200).json({ status: 'success', message: 'Grid saved successfully!', data: savedGrid });
-    } catch (error) {
-        console.error("Save grid error:", error);
-        res.status(500).json({ error: 'Failed to save grid' });
-    }
-};
-
-// GET MY WORK HOURS (Single User)
-export const getMyWorkHours = async (req: AuthRequest, res: Response): Promise<any> => {
-    try {
-        const userId = req.user?.userId;
-        const { date } = req.params;
-
-        if (!userId) return res.status(401).json({ error: "Unauthorized access" });
+          },
+        ],
+      },
+    });
+  };
 
 
+// ======================================================
+// BUILD COMPLETE DAY RESPONSE
+// ======================================================
 
-        const targetDate = new Date(date as string);
+const buildDayResponse =
+  async (
+    userId: string,
+    dayStart: Date
+  ) => {
+    const dayEnd =
+      addDays(dayStart, 1);
 
-        const myGrid = await prisma.dailyWorkHours.findUnique({
-            where: {
-                userId_date: { // Uses your @@unique constraint from schema!
-                    userId: userId,
-                    date: targetDate
-                }
-            }
-        });
 
-        // If they haven't painted their grid for this day yet, return an empty 48-block array
-        if (!myGrid) {
-            return res.status(200).json({ 
-                status: 'success', 
-                data: {
-                    userId,
-                    date: targetDate,
-                    workBlocks: new Array(48).fill(false)
-                } 
-            });
-        }
+    const record =
+      await prisma.dailyWorkHours.findUnique({
+        where: {
+          userId_date: {
+            userId,
+            date: dayStart,
+          },
+        },
+      });
 
-        res.status(200).json({ status: 'success', data: myGrid });
-    } catch (error) {
-        console.error("Fetch my work hours error:", error);
-        res.status(500).json({ error: 'Failed to fetch your work hours' });
-    }
-};
 
-// GET ALL MY WORK HOURS (Entire History)
-export const getAllMyWorkHours = async (req: AuthRequest, res: Response): Promise<any> => {
-    try {
-        const userId = req.user?.userId;
+    let blocks =
+      normalizeBlocks(
+        record?.statusBlocks
+      );
 
-        if (!userId) return res.status(401).json({ error: "Unauthorized access" });
 
-        // Use findMany to get every single grid the user has ever saved
-        const myGrids = await prisma.dailyWorkHours.findMany({
-            where: {
-                userId: userId
+    const sessions =
+      await prisma.workSession.findMany({
+        where: {
+          userId,
+
+          startedAt: {
+            lt: dayEnd,
+          },
+
+          OR: [
+            {
+              endedAt: null,
             },
-            orderBy: {
-                date: 'desc' // Sorts them from newest to oldest
-            }
-        });
 
-        // Returns an array of all their saved grids!
-        res.status(200).json({ status: 'success', data: myGrids });
-    } catch (error) {
-        console.error("Fetch all my work hours error:", error);
-        res.status(500).json({ error: 'Failed to fetch your work hours history' });
+            {
+              endedAt: {
+                gt: dayStart,
+              },
+            },
+          ],
+        },
+
+        orderBy: {
+          startedAt: "asc",
+        },
+      });
+
+
+    /*
+      Active sessions are overlaid onto the grid
+      even before clock-out.
+    */
+    const now = new Date();
+
+
+    for (
+      const session of sessions
+    ) {
+      const end =
+        session.endedAt ??
+        now;
+
+      blocks =
+        applyIntervalToBlocks(
+          blocks,
+          dayStart,
+          session.startedAt,
+          end,
+          "WORK"
+        );
     }
+
+
+    const activeSession =
+      sessions.find(
+        (session) =>
+          session.status ===
+            "ACTIVE" &&
+          session.endedAt === null
+      ) ?? null;
+
+
+    return {
+      id:
+        record?.id ?? null,
+
+      date:
+        dayStart
+          .toISOString()
+          .slice(0, 10),
+
+      statusBlocks:
+        blocks,
+
+      sessions,
+
+      activeSession,
+
+      summary:
+        calculateWorkRestSummary(
+          blocks
+        ),
+    };
+  };
+
+
+// ======================================================
+// GET SELECTED DAY
+// GET /api/work-hours/day/:date
+// ======================================================
+
+export const getMyWorkDay = async (
+  req: AuthRequest,
+  res: Response
+): Promise<any> => {
+  try {
+    const userId =
+      req.user?.userId;
+
+    if (!userId) {
+      return res.status(401).json({
+        error:
+          "Unauthorized access",
+      });
+    }
+
+
+    const dateString =
+      getParam(
+        req.params.date
+      );
+
+
+    if (!dateString) {
+      return res.status(400).json({
+        error:
+          "Date is required",
+      });
+    }
+
+
+    const date =
+      parseDateOnly(
+        dateString
+      );
+
+
+    if (!date) {
+      return res.status(400).json({
+        error:
+          "Invalid date. Use YYYY-MM-DD.",
+      });
+    }
+
+
+    const data =
+      await buildDayResponse(
+        userId,
+        date
+      );
+
+
+    return res.status(200).json({
+      status: "success",
+      data,
+    });
+
+  } catch (error) {
+    console.error(
+      "Get work day error:",
+      error
+    );
+
+    return res.status(500).json({
+      error:
+        "Failed to fetch work/rest record",
+    });
+  }
 };
 
-// shift log by time
 
-export const logShiftByTime = async (req: AuthRequest, res: Response): Promise<any> => {
+// ======================================================
+// UPDATE REST / MEAL / UNRECORDED SLOTS
+// PATCH /api/work-hours/day/:date/slots
+// ======================================================
+
+export const updateMyDaySlots =
+  async (
+    req: AuthRequest,
+    res: Response
+  ): Promise<any> => {
     try {
-        const userId = req.user?.userId;
-        const { targetDate, startTime, endTime } = req.body; 
+      const userId =
+        req.user?.userId;
 
-        if (!userId) return res.status(401).json({ error: "Unauthorized access" });
-        if (!targetDate || !startTime || !endTime) {
-            return res.status(400).json({ error: "Missing date, startTime, or endTime" });
+
+      if (!userId) {
+        return res.status(401).json({
+          error:
+            "Unauthorized",
+        });
+      }
+
+
+      const dateString =
+        getParam(
+          req.params.date
+        );
+
+
+      if (!dateString) {
+        return res.status(400).json({
+          error:
+            "Date is required",
+        });
+      }
+
+
+      const date =
+        parseDateOnly(
+          dateString
+        );
+
+
+      if (!date) {
+        return res.status(400).json({
+          error:
+            "Invalid date. Use YYYY-MM-DD.",
+        });
+      }
+
+
+      type SlotUpdate = {
+        slotIndex: number;
+        status: string;
+      };
+
+
+      let updates: SlotUpdate[];
+
+
+      if (
+        Array.isArray(
+          req.body.updates
+        )
+      ) {
+        updates =
+          req.body.updates.map(
+            (item: any) => ({
+              slotIndex:
+                Number(
+                  item.slotIndex
+                ),
+
+              status:
+                normalizeValue(
+                  item.status
+                ),
+            })
+          );
+      } else {
+        updates = [
+          {
+            slotIndex:
+              Number(
+                req.body.slotIndex
+              ),
+
+            status:
+              normalizeValue(
+                req.body.status
+              ),
+          },
+        ];
+      }
+
+
+      if (!updates.length) {
+        return res.status(400).json({
+          error:
+            "At least one slot update is required",
+        });
+      }
+
+
+      for (
+        const update of updates
+      ) {
+        if (
+          !Number.isInteger(
+            update.slotIndex
+          ) ||
+          update.slotIndex < 0 ||
+          update.slotIndex > 47
+        ) {
+          return res.status(400).json({
+            error:
+              "slotIndex must be between 0 and 47",
+          });
         }
 
-        const dateObj = new Date(targetDate as string);
-        if (isNaN(dateObj.getTime())) {
-            return res.status(400).json({ error: "Invalid date format." });
+
+        if (
+          !DIRECT_EDIT_STATUSES.includes(
+            update.status
+          )
+        ) {
+          return res.status(400).json({
+            error:
+              "Slot status must be REST, MEAL or UNRECORDED. Use clock-in/manual work session for WORK.",
+          });
         }
+      }
 
-        // Helper Function: STCW 30-Minute Rounding Logic (USING parseInt)
-        const timeToIndex = (timeStr: string) => {
-            if (!timeStr || typeof timeStr !== 'string') return NaN;
-            
-            const parts = timeStr.split(':');
-            if (parts.length !== 2) return NaN;
-            
-            // parseInt safely ignores leading zeros!
-            let hours = parseInt(parts[0], 10);
-            let minutes = parseInt(parts[1], 10);
 
-            if (isNaN(hours) || isNaN(minutes)) return NaN;
+      const dayEnd =
+        addDays(
+          date,
+          1
+        );
 
-            if (minutes >= 45) {
-                hours += 1;
-                minutes = 0;
-            } else if (minutes >= 15) {
-                minutes = 30;
-            } else {
-                minutes = 0;
+
+      /*
+        Don't allow a REST/MEAL edit over
+        an existing work session.
+      */
+      const workSessions =
+        await prisma.workSession.findMany({
+          where: {
+            userId,
+
+            startedAt: {
+              lt: dayEnd,
+            },
+
+            OR: [
+              {
+                endedAt: null,
+              },
+
+              {
+                endedAt: {
+                  gt: date,
+                },
+              },
+            ],
+          },
+        });
+
+
+      for (
+        const update of updates
+      ) {
+        const slot =
+          getSlotTimeRange(
+            date,
+            update.slotIndex
+          );
+
+
+        const conflict =
+          workSessions.some(
+            (session) => {
+              const sessionEnd =
+                session.endedAt ??
+                new Date();
+
+              return (
+                session.startedAt <
+                  slot.end &&
+                sessionEnd >
+                  slot.start
+              );
             }
+          );
 
-            if (hours >= 24) return 48;
-            return (hours * 2) + (minutes === 30 ? 1 : 0);
-        };
 
-        const startIndex = timeToIndex(startTime);
-        const endIndex = timeToIndex(endTime);
-
-        if (isNaN(startIndex) || isNaN(endIndex)) {
-            return res.status(400).json({ error: "Could not parse time format. Please use 'HH:MM'." });
+        if (conflict) {
+          return res.status(409).json({
+            error:
+              `Slot ${update.slotIndex} overlaps an existing work session.`,
+          });
         }
+      }
 
-        if (startIndex >= endIndex || startIndex < 0 || endIndex > 48) {
-            return res.status(400).json({ error: "Invalid time range. Shift must be valid." });
-        }
 
-        // 1. Fetch the existing grid
-        const existingGrid = await prisma.dailyWorkHours.findFirst({
-            where: { userId: userId, date: dateObj }
+      const existing =
+        await prisma.dailyWorkHours.findUnique({
+          where: {
+            userId_date: {
+              userId,
+              date,
+            },
+          },
         });
 
-        // 2. Clone the existing array or make a blank one
-        let updatedBlocks = existingGrid 
-            ? [...existingGrid.workBlocks] 
-            : new Array(48).fill(false);
 
-        // 3. OVERLAP: Paint the new shift
-        for (let i = startIndex; i < endIndex; i++) {
-            updatedBlocks[i] = true;
-        }
+      const blocks =
+        normalizeBlocks(
+          existing?.statusBlocks
+        );
 
-        let savedGrid;
 
-        // 4. Update if exists, Create if new
-        if (existingGrid) {
-            savedGrid = await prisma.dailyWorkHours.update({
-                where: { id: existingGrid.id },
-                data: { workBlocks: updatedBlocks }
-            });
-        } else {
-            savedGrid = await prisma.dailyWorkHours.create({
-                data: { userId, date: dateObj, workBlocks: updatedBlocks }
-            });
-        }
+      for (
+        const update of updates
+      ) {
+        blocks[
+          update.slotIndex
+        ] = update.status;
+      }
 
-        res.status(200).json({ 
-            status: 'success', 
-            message: `Shift merged! Blocks ${startIndex} to ${endIndex} are now active.`, 
-            data: savedGrid 
-        });
+
+      await prisma.dailyWorkHours.upsert({
+        where: {
+          userId_date: {
+            userId,
+            date,
+          },
+        },
+
+        update: {
+          statusBlocks:
+            blocks,
+        },
+
+        create: {
+          userId,
+          date,
+          statusBlocks:
+            blocks,
+        },
+      });
+
+
+      const data =
+        await buildDayResponse(
+          userId,
+          date
+        );
+
+
+      return res.status(200).json({
+        status: "success",
+
+        message:
+          "Work/rest record updated",
+
+        data,
+      });
+
     } catch (error) {
-        console.error("Log shift by time error:", error);
-        res.status(500).json({ error: 'Failed to log shift' });
+      console.error(
+        "Update slots error:",
+        error
+      );
+
+      return res.status(500).json({
+        error:
+          "Failed to update work/rest record",
+      });
     }
+  };
+
+
+// ======================================================
+// CLOCK IN
+// POST /api/work-hours/sessions/clock-in
+// ======================================================
+
+export const clockIn = async (
+  req: AuthRequest,
+  res: Response
+): Promise<any> => {
+  try {
+    const userId =
+      req.user?.userId;
+
+
+    if (!userId) {
+      return res.status(401).json({
+        error: "Unauthorized",
+      });
+    }
+
+
+    const shipLocation =
+      String(
+        req.body.shipLocation ??
+          ""
+      ).trim();
+
+
+    if (!shipLocation) {
+      return res.status(400).json({
+        error:
+          "Ship location is required",
+      });
+    }
+
+
+    if (
+      shipLocation.length > 100
+    ) {
+      return res.status(400).json({
+        error:
+          "Ship location cannot exceed 100 characters",
+      });
+    }
+
+
+    const active =
+      await prisma.workSession.findFirst({
+        where: {
+          userId,
+          status: "ACTIVE",
+          endedAt: null,
+        },
+      });
+
+
+    if (active) {
+      return res.status(409).json({
+        error:
+          "You already have an active work session",
+
+        data: active,
+      });
+    }
+
+
+    const session =
+      await prisma.workSession.create({
+        data: {
+          userId,
+
+          shipLocation,
+
+          startedAt:
+            new Date(),
+
+          source:
+            "LIVE",
+
+          status:
+            "ACTIVE",
+        },
+      });
+
+
+    return res.status(201).json({
+      status: "success",
+
+      message:
+        `Clocked in at ${shipLocation}`,
+
+      data: session,
+    });
+
+  } catch (error) {
+    console.error(
+      "Clock in error:",
+      error
+    );
+
+    return res.status(500).json({
+      error:
+        "Failed to clock in",
+    });
+  }
 };
+
+
+// ======================================================
+// ACTIVE SESSION
+// GET /api/work-hours/sessions/active
+// ======================================================
+
+export const getActiveSession =
+  async (
+    req: AuthRequest,
+    res: Response
+  ): Promise<any> => {
+    try {
+      const userId =
+        req.user?.userId;
+
+
+      if (!userId) {
+        return res.status(401).json({
+          error:
+            "Unauthorized access",
+        });
+      }
+
+
+      const session =
+        await prisma.workSession.findFirst({
+          where: {
+            userId,
+            status: "ACTIVE",
+            endedAt: null,
+          },
+
+          orderBy: {
+            startedAt: "desc",
+          },
+        });
+
+
+      return res.status(200).json({
+        status: "success",
+        data: session,
+      });
+
+    } catch (error) {
+      console.error(
+        "Active session error:",
+        error
+      );
+
+      return res.status(500).json({
+        error:
+          "Failed to fetch active session",
+      });
+    }
+  };
+
+
+// ======================================================
+// CLOCK OUT
+// POST /api/work-hours/sessions/clock-out
+// ======================================================
+
+export const clockOut = async (
+  req: AuthRequest,
+  res: Response
+): Promise<any> => {
+  try {
+    const userId =
+      req.user?.userId;
+
+
+    if (!userId) {
+      return res.status(401).json({
+        error: "Unauthorized",
+      });
+    }
+
+
+    const session =
+      await prisma.workSession.findFirst({
+        where: {
+          userId,
+          status: "ACTIVE",
+          endedAt: null,
+        },
+      });
+
+
+    if (!session) {
+      return res.status(400).json({
+        error:
+          "No active work session found",
+      });
+    }
+
+
+    const endedAt =
+      new Date();
+
+
+    const completed =
+      await prisma.workSession.update({
+        where: {
+          id: session.id,
+        },
+
+        data: {
+          endedAt,
+          status:
+            "COMPLETED",
+        },
+      });
+
+
+    await saveWorkIntervalToGrid(
+      userId,
+      session.startedAt,
+      endedAt
+    );
+
+
+    return res.status(200).json({
+      status: "success",
+
+      message:
+        "Clocked out successfully",
+
+      data: completed,
+    });
+
+  } catch (error) {
+    console.error(
+      "Clock out error:",
+      error
+    );
+
+    return res.status(500).json({
+      error:
+        "Failed to clock out",
+    });
+  }
+};
+
+
+// ======================================================
+// MANUAL / MISSED WORK SESSION
+// POST /api/work-hours/sessions/manual
+// ======================================================
+
+export const createManualWorkSession =
+  async (
+    req: AuthRequest,
+    res: Response
+  ): Promise<any> => {
+    try {
+      const userId =
+        req.user?.userId;
+
+
+      if (!userId) {
+        return res.status(401).json({
+          error: "Unauthorized",
+        });
+      }
+
+
+      const {
+        startedAt,
+        endedAt,
+        shipLocation,
+      } = req.body;
+
+
+      if (
+        !startedAt ||
+        !endedAt ||
+        !shipLocation
+      ) {
+        return res.status(400).json({
+          error:
+            "startedAt, endedAt and shipLocation are required",
+        });
+      }
+
+
+      const start =
+        new Date(startedAt);
+
+      const end =
+        new Date(endedAt);
+
+
+      if (
+        Number.isNaN(
+          start.getTime()
+        ) ||
+        Number.isNaN(
+          end.getTime()
+        )
+      ) {
+        return res.status(400).json({
+          error:
+            "Invalid start/end date",
+        });
+      }
+
+
+      if (start >= end) {
+        return res.status(400).json({
+          error:
+            "End time must be after start time",
+        });
+      }
+
+
+      if (
+        end > new Date()
+      ) {
+        return res.status(400).json({
+          error:
+            "Manual work session cannot end in the future",
+        });
+      }
+
+
+      const location =
+        String(
+          shipLocation
+        ).trim();
+
+
+      if (!location) {
+        return res.status(400).json({
+          error:
+            "Ship location is required",
+        });
+      }
+
+
+      const overlap =
+        await findOverlappingSession(
+          userId,
+          start,
+          end
+        );
+
+
+      if (overlap) {
+        return res.status(409).json({
+          error:
+            "This work session overlaps another work session",
+
+          conflictingSession:
+            overlap,
+        });
+      }
+
+
+      const session =
+        await prisma.workSession.create({
+          data: {
+            userId,
+
+            shipLocation:
+              location,
+
+            startedAt:
+              start,
+
+            endedAt:
+              end,
+
+            source:
+              "MANUAL",
+
+            status:
+              "COMPLETED",
+          },
+        });
+
+
+      await saveWorkIntervalToGrid(
+        userId,
+        start,
+        end
+      );
+
+
+      return res.status(201).json({
+        status: "success",
+
+        message:
+          "Manual work session saved",
+
+        data: session,
+      });
+
+    } catch (error) {
+      console.error(
+        "Manual work session error:",
+        error
+      );
+
+      return res.status(500).json({
+        error:
+          "Failed to save manual work session",
+      });
+    }
+  };
+
+
+// ======================================================
+// DAILY SUMMARY
+// GET /api/work-hours/summary/:date
+// ======================================================
+
+export const getDailySummary =
+  async (
+    req: AuthRequest,
+    res: Response
+  ): Promise<any> => {
+    try {
+      const userId =
+        req.user?.userId;
+
+
+      if (!userId) {
+        return res.status(401).json({
+          error: "Unauthorized",
+        });
+      }
+
+
+      const dateString =
+        getParam(
+          req.params.date
+        );
+
+
+      if (!dateString) {
+        return res.status(400).json({
+          error:
+            "Date is required",
+        });
+      }
+
+
+      const date =
+        parseDateOnly(
+          dateString
+        );
+
+
+      if (!date) {
+        return res.status(400).json({
+          error:
+            "Invalid date. Use YYYY-MM-DD.",
+        });
+      }
+
+
+      const day =
+        await buildDayResponse(
+          userId,
+          date
+        );
+
+
+      return res.status(200).json({
+        status: "success",
+
+        data: {
+          date:
+            day.date,
+
+          ...day.summary,
+        },
+      });
+
+    } catch (error) {
+      console.error(
+        "Summary error:",
+        error
+      );
+
+      return res.status(500).json({
+        error:
+          "Failed to calculate summary",
+      });
+    }
+  };
+
+
+// ======================================================
+// HISTORY
+// GET /api/work-hours/history
+// ======================================================
+
+export const getMyWorkRestHistory =
+  async (
+    req: AuthRequest,
+    res: Response
+  ): Promise<any> => {
+    try {
+      const userId =
+        req.user?.userId;
+
+
+      if (!userId) {
+        return res.status(401).json({
+          error: "Unauthorized",
+        });
+      }
+
+
+      const records =
+        await prisma.dailyWorkHours.findMany({
+          where: {
+            userId,
+          },
+
+          orderBy: {
+            date: "desc",
+          },
+
+          take: 90,
+        });
+
+
+      const data =
+        records.map(
+          (record) => {
+            const blocks =
+              normalizeBlocks(
+                record.statusBlocks
+              );
+
+            return {
+              id:
+                record.id,
+
+              date:
+                record.date
+                  .toISOString()
+                  .slice(0, 10),
+
+              statusBlocks:
+                blocks,
+
+              summary:
+                calculateWorkRestSummary(
+                  blocks
+                ),
+            };
+          }
+        );
+
+
+      return res.status(200).json({
+        status: "success",
+
+        count:
+          data.length,
+
+        data,
+      });
+
+    } catch (error) {
+      console.error(
+        "History error:",
+        error
+      );
+
+      return res.status(500).json({
+        error:
+          "Failed to fetch work/rest history",
+      });
+    }
+  };

@@ -312,13 +312,17 @@ const saveWorkIntervalToGrid =
 // CHECK OVERLAPPING WORK SESSION
 // ======================================================
 
-const findOverlappingSession =
+// ======================================================
+// FIND EXISTING WORK INSIDE A REQUESTED RANGE
+// ======================================================
+
+const findOverlappingSessions =
   async (
     userId: string,
     start: Date,
     end: Date
   ) => {
-    return prisma.workSession.findFirst({
+    return prisma.workSession.findMany({
       where: {
         userId,
 
@@ -338,8 +342,245 @@ const findOverlappingSession =
           },
         ],
       },
+
+      orderBy: {
+        startedAt: "asc",
+      },
     });
   };
+
+
+// ======================================================
+// REMOVE TIME ALREADY COVERED BY WORK
+//
+// Example:
+//
+// requested:      09:00 -------- 13:30
+// existing work:        10:00 -- 11:00
+//
+// result:
+// 09:00-10:00
+// 11:00-13:30
+//
+// We therefore never create duplicate work sessions.
+// ======================================================
+
+type WorkInterval = {
+  start: Date;
+  end: Date;
+};
+
+
+const subtractExistingWork = (
+  requestedStart: Date,
+  requestedEnd: Date,
+  sessions: Array<{
+    startedAt: Date;
+    endedAt: Date | null;
+  }>
+): WorkInterval[] => {
+
+  let remaining: WorkInterval[] = [
+    {
+      start: requestedStart,
+      end: requestedEnd,
+    },
+  ];
+
+
+  const now =
+    new Date();
+
+
+  const covered =
+    sessions
+      .map(
+        session => ({
+          start:
+            session.startedAt,
+
+          end:
+            session.endedAt ??
+            now,
+        })
+      )
+      .filter(
+        interval =>
+          interval.start <
+            requestedEnd &&
+          interval.end >
+            requestedStart
+      )
+      .sort(
+        (a, b) =>
+          a.start.getTime() -
+          b.start.getTime()
+      );
+
+
+  for (
+    const existing of covered
+  ) {
+
+    const nextRemaining:
+      WorkInterval[] = [];
+
+
+    for (
+      const segment of remaining
+    ) {
+
+      // No overlap
+      if (
+        existing.end <=
+          segment.start ||
+        existing.start >=
+          segment.end
+      ) {
+        nextRemaining.push(
+          segment
+        );
+
+        continue;
+      }
+
+
+      // Portion before existing work
+      if (
+        existing.start >
+        segment.start
+      ) {
+        nextRemaining.push({
+          start:
+            segment.start,
+
+          end:
+            existing.start <
+            segment.end
+              ? existing.start
+              : segment.end,
+        });
+      }
+
+
+      // Portion after existing work
+      if (
+        existing.end <
+        segment.end
+      ) {
+        nextRemaining.push({
+          start:
+            existing.end >
+            segment.start
+              ? existing.end
+              : segment.start,
+
+          end:
+            segment.end,
+        });
+      }
+    }
+
+
+    remaining =
+      nextRemaining.filter(
+        segment =>
+          segment.start <
+          segment.end
+      );
+  }
+
+
+  return remaining;
+};
+
+
+// ======================================================
+// CHECK REST / MEAL CONFLICTS
+// ======================================================
+
+const formatSlotLabel = (
+  slotIndex: number
+): string => {
+
+  const totalMinutes =
+    slotIndex *
+    MINUTES_PER_BLOCK;
+
+  const hour24 =
+    Math.floor(
+      totalMinutes / 60
+    ) % 24;
+
+  const minute =
+    totalMinutes % 60;
+
+  const meridiem =
+    hour24 >= 12
+      ? "PM"
+      : "AM";
+
+  const hour12 =
+    hour24 % 12 || 12;
+
+
+  return `${hour12}:${String(
+    minute
+  ).padStart(
+    2,
+    "0"
+  )} ${meridiem}`;
+};
+
+
+const getNonWorkConflicts = (
+  blocks: string[],
+  startIndex: number,
+  endIndex: number
+) => {
+
+  const conflicts: Array<{
+    slotIndex: number;
+    time: string;
+    status: string;
+  }> = [];
+
+
+  for (
+    let index =
+      startIndex;
+
+    index <
+      endIndex;
+
+    index++
+  ) {
+
+    const status =
+      blocks[index];
+
+
+    if (
+      status === "REST" ||
+      status === "MEAL"
+    ) {
+      conflicts.push({
+        slotIndex:
+          index,
+
+        time:
+          formatSlotLabel(
+            index
+          ),
+
+        status,
+      });
+    }
+  }
+
+
+  return conflicts;
+};
 
 
 // ======================================================
@@ -1077,27 +1318,37 @@ export const createManualWorkSession =
     req: AuthRequest,
     res: Response
   ): Promise<any> => {
+
     try {
+
       const userId =
         req.user?.userId;
 
+
       if (!userId) {
         return res.status(401).json({
-          error: "Unauthorized",
+          error:
+            "Unauthorized",
         });
       }
+
 
       const {
         startedAt,
         endedAt,
         shipLocation,
 
-        // Local-grid metadata sent by the frontend.
+        // Frontend local-grid information
         selectedDate,
         startSlotIndex,
         endSlotIndex,
         timezoneOffsetMinutes,
       } = req.body;
+
+
+      // ==================================================
+      // BASIC VALIDATION
+      // ==================================================
 
       if (
         !startedAt ||
@@ -1110,15 +1361,17 @@ export const createManualWorkSession =
         });
       }
 
-      // startedAt / endedAt are real ISO instants.
-      // Example in IST:
-      // 09:00 local -> 03:30Z
-      // 12:00 local -> 06:30Z
+
       const start =
-        new Date(startedAt);
+        new Date(
+          startedAt
+        );
 
       const end =
-        new Date(endedAt);
+        new Date(
+          endedAt
+        );
+
 
       if (
         Number.isNaN(
@@ -1134,24 +1387,33 @@ export const createManualWorkSession =
         });
       }
 
-      if (start >= end) {
+
+      if (
+        start >= end
+      ) {
         return res.status(400).json({
           error:
             "End time must be after start time",
         });
       }
 
-      if (end > new Date()) {
+
+      if (
+        end >
+        new Date()
+      ) {
         return res.status(400).json({
           error:
             "Manual work session cannot end in the future",
         });
       }
 
+
       const location =
         String(
           shipLocation
         ).trim();
+
 
       if (!location) {
         return res.status(400).json({
@@ -1160,30 +1422,48 @@ export const createManualWorkSession =
         });
       }
 
-      if (location.length > 100) {
+
+      if (
+        location.length >
+        100
+      ) {
         return res.status(400).json({
           error:
             "Ship location cannot exceed 100 characters",
         });
       }
 
-      // --------------------------------------------------
-      // Validate optional local-grid metadata.
-      // New frontend always sends these fields.
-      // --------------------------------------------------
+
+      // ==================================================
+      // LOCAL GRID VALIDATION
+      // ==================================================
 
       const hasGridMetadata =
         selectedDate !== undefined ||
         startSlotIndex !== undefined ||
         endSlotIndex !== undefined;
 
-      let gridDate: Date | null = null;
-      let gridStartIndex: number | null = null;
-      let gridEndIndex: number | null = null;
 
-      if (hasGridMetadata) {
+      let gridDate:
+        Date | null =
+        null;
+
+      let gridStartIndex:
+        number | null =
+        null;
+
+      let gridEndIndex:
+        number | null =
+        null;
+
+
+      if (
+        hasGridMetadata
+      ) {
+
         if (
-          typeof selectedDate !== "string"
+          typeof selectedDate !==
+          "string"
         ) {
           return res.status(400).json({
             error:
@@ -1191,10 +1471,12 @@ export const createManualWorkSession =
           });
         }
 
+
         gridDate =
           parseDateOnly(
             selectedDate
           );
+
 
         if (!gridDate) {
           return res.status(400).json({
@@ -1203,11 +1485,17 @@ export const createManualWorkSession =
           });
         }
 
+
         gridStartIndex =
-          Number(startSlotIndex);
+          Number(
+            startSlotIndex
+          );
 
         gridEndIndex =
-          Number(endSlotIndex);
+          Number(
+            endSlotIndex
+          );
+
 
         if (
           !Number.isInteger(
@@ -1230,12 +1518,10 @@ export const createManualWorkSession =
         }
       }
 
-      // timezoneOffsetMinutes is intentionally not used to
-      // calculate the slots here. The frontend already sends
-      // the exact slots the user selected. Keeping it in the
-      // payload is still useful for logs/debugging.
+
       if (
-        timezoneOffsetMinutes !== undefined &&
+        timezoneOffsetMinutes !==
+          undefined &&
         !Number.isFinite(
           Number(
             timezoneOffsetMinutes
@@ -1248,91 +1534,205 @@ export const createManualWorkSession =
         });
       }
 
-      // --------------------------------------------------
-      // Work-session overlap uses the REAL UTC instants.
-      // --------------------------------------------------
 
-      const overlap =
-        await findOverlappingSession(
-          userId,
-          start,
-          end
-        );
-
-      if (overlap) {
-        return res.status(409).json({
-          error:
-            "This work session overlaps another work session",
-
-          conflictingSession:
-            overlap,
-        });
-      }
-
-      // --------------------------------------------------
-      // Save session + local grid atomically for new clients.
-      // --------------------------------------------------
-
-      let session;
+      // ==================================================
+      // REST / MEAL ARE REAL CONFLICTS
+      //
+      // Existing WORK is NOT considered a conflict.
+      // ==================================================
 
       if (
         gridDate &&
         gridStartIndex !== null &&
         gridEndIndex !== null
       ) {
-        session =
-          await prisma.$transaction(
-            async (tx) => {
-              const created =
-                await tx.workSession.create({
-                  data: {
-                    userId,
-                    shipLocation:
-                      location,
-                    startedAt:
-                      start,
-                    endedAt:
-                      end,
-                    source:
-                      "MANUAL",
-                    status:
-                      "COMPLETED",
-                  },
-                });
 
-              const existing =
+        const existingGrid =
+          await prisma.dailyWorkHours.findUnique({
+            where: {
+              userId_date: {
+                userId,
+
+                date:
+                  gridDate,
+              },
+            },
+          });
+
+
+        const blocks =
+          normalizeBlocks(
+            existingGrid
+              ?.statusBlocks
+          );
+
+
+        const conflicts =
+          getNonWorkConflicts(
+            blocks,
+            gridStartIndex,
+            gridEndIndex
+          );
+
+
+        if (
+          conflicts.length >
+          0
+        ) {
+
+          return res.status(409).json({
+            status:
+              "conflict",
+
+            code:
+              "REST_MEAL_CONFLICT",
+
+            error:
+              "Selected work time overlaps a Rest or Meal/Tea/Break period.",
+
+            message:
+              "Work cannot be added over Rest or Meal/Tea/Break. Change those slots first or choose a different time.",
+
+            conflicts,
+          });
+        }
+      }
+
+
+      // ==================================================
+      // EXISTING WORK IS ALLOWED
+      //
+      // Find what parts are already work.
+      // ==================================================
+
+      const overlappingSessions =
+        await findOverlappingSessions(
+          userId,
+          start,
+          end
+        );
+
+
+      const missingWorkSegments =
+        subtractExistingWork(
+          start,
+          end,
+          overlappingSessions
+        );
+
+
+      const createdSessions: any[] =
+        [];
+
+
+      // ==================================================
+      // NEW FRONTEND
+      //
+      // Session + local grid saved atomically.
+      // ==================================================
+
+      if (
+        gridDate &&
+        gridStartIndex !== null &&
+        gridEndIndex !== null
+      ) {
+
+        const created =
+          await prisma.$transaction(
+            async tx => {
+
+              const newSessions:
+                any[] = [];
+
+
+              // Only save portions that are not
+              // already recorded as WORK.
+              for (
+                const segment of
+                  missingWorkSegments
+              ) {
+
+                const session =
+                  await tx.workSession.create({
+                    data: {
+                      userId,
+
+                      shipLocation:
+                        location,
+
+                      startedAt:
+                        segment.start,
+
+                      endedAt:
+                        segment.end,
+
+                      source:
+                        "MANUAL",
+
+                      status:
+                        "COMPLETED",
+                    },
+                  });
+
+
+                newSessions.push(
+                  session
+                );
+              }
+
+
+              // ------------------------------------------
+              // GRID
+              // ------------------------------------------
+
+              const existingGrid =
                 await tx.dailyWorkHours.findUnique({
                   where: {
                     userId_date: {
                       userId,
+
                       date:
                         gridDate as Date,
                     },
                   },
                 });
 
+
               const blocks =
                 normalizeBlocks(
-                  existing?.statusBlocks
+                  existingGrid
+                    ?.statusBlocks
                 );
 
-              // Mark exactly the slots selected in the local UI.
-              // Example 09:00 -> 12:00 means slots 18..23.
+
+              /*
+                We already checked REST / MEAL above.
+
+                Therefore all selected slots may safely
+                become WORK.
+
+                Existing WORK simply stays WORK.
+              */
+
               for (
                 let index =
                   gridStartIndex as number;
+
                 index <
-                (gridEndIndex as number);
+                  (gridEndIndex as number);
+
                 index++
               ) {
                 blocks[index] =
                   "WORK";
               }
 
+
               await tx.dailyWorkHours.upsert({
                 where: {
                   userId_date: {
                     userId,
+
                     date:
                       gridDate as Date,
                   },
@@ -1345,55 +1745,183 @@ export const createManualWorkSession =
 
                 create: {
                   userId,
+
                   date:
                     gridDate as Date,
+
                   statusBlocks:
                     blocks,
                 },
               });
 
-              return created;
+
+              return newSessions;
             }
           );
-      } else {
-        // Backward compatibility for old clients that only send
-        // startedAt / endedAt / shipLocation.
-        session =
-          await prisma.workSession.create({
-            data: {
-              userId,
-              shipLocation:
-                location,
-              startedAt:
-                start,
-              endedAt:
-                end,
-              source:
-                "MANUAL",
-              status:
-                "COMPLETED",
-            },
-          });
 
-        await saveWorkIntervalToGrid(
-          userId,
-          start,
-          end
+
+        createdSessions.push(
+          ...created
         );
+
+      } else {
+
+        // =================================================
+        // OLD CLIENT COMPATIBILITY
+        // =================================================
+
+        for (
+          const segment of
+            missingWorkSegments
+        ) {
+
+          const session =
+            await prisma.workSession.create({
+              data: {
+                userId,
+
+                shipLocation:
+                  location,
+
+                startedAt:
+                  segment.start,
+
+                endedAt:
+                  segment.end,
+
+                source:
+                  "MANUAL",
+
+                status:
+                  "COMPLETED",
+              },
+            });
+
+
+          createdSessions.push(
+            session
+          );
+
+
+          await saveWorkIntervalToGrid(
+            userId,
+            segment.start,
+            segment.end
+          );
+        }
       }
 
-      return res.status(201).json({
-        status: "success",
-        message:
-          "Manual work session saved",
-        data: session,
+
+      // ==================================================
+      // RESPONSE
+      // ==================================================
+
+      const alreadyRecorded =
+        overlappingSessions.length >
+          0 &&
+        missingWorkSegments.length ===
+          0;
+
+
+      const extendedExistingWork =
+        overlappingSessions.length >
+          0 &&
+        missingWorkSegments.length >
+          0;
+
+
+      let code =
+        "WORK_SESSION_CREATED";
+
+      let message =
+        "Manual work session saved";
+
+
+      if (
+        alreadyRecorded
+      ) {
+        code =
+          "WORK_ALREADY_RECORDED";
+
+        message =
+          "This selected time is already recorded as work. No duplicate work session was created.";
+
+      } else if (
+        extendedExistingWork
+      ) {
+        code =
+          "WORK_SESSION_EXTENDED";
+
+        message =
+          "Part of this time was already recorded as work. The existing work was kept and only the remaining time was added.";
+      }
+
+
+      const refreshedDay =
+        gridDate
+          ? await buildDayResponse(
+              userId,
+              gridDate
+            )
+          : null;
+
+
+      /*
+        Preserve the old "data" field so existing
+        frontend code does not suddenly break.
+      */
+
+      const primarySession =
+        createdSessions[0] ??
+        overlappingSessions[0] ??
+        null;
+
+
+      return res.status(
+        createdSessions.length >
+          0
+          ? 201
+          : 200
+      ).json({
+        status:
+          "success",
+
+        code,
+
+        message,
+
+        data:
+          primarySession,
+
+        meta: {
+          createdCount:
+            createdSessions.length,
+
+          existingWorkDetected:
+            overlappingSessions.length >
+            0,
+
+          alreadyRecorded,
+
+          extendedExistingWork,
+
+          createdSessions,
+
+          existingWorkSessions:
+            overlappingSessions,
+        },
+
+        day:
+          refreshedDay,
       });
 
     } catch (error) {
+
       console.error(
         "Manual work session error:",
         error
       );
+
 
       return res.status(500).json({
         error:

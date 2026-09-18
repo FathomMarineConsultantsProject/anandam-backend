@@ -36,18 +36,19 @@ model User {
   avatarId   String?
 
   // Relationships
-  moodLogs      MoodLog[]
-  habits        Habit[]
-  dailyPlans    DailyPlan[]
-  workHours     DailyWorkHours[]
-  workSessions  WorkSession[]
-  emergencies   EmergencyAlert[]
-  fitnessStats  DailyFitnessStat[]
-  workoutLogs   WorkoutLog[]
-  vrEquipment   VREquipment?
-  challenges    ChallengeProgress[]
-  refreshTokens RefreshToken[]
-  passwordReset PasswordReset?
+  moodLogs         MoodLog[]
+  habits           Habit[]
+  dailyPlans       DailyPlan[]
+  plannerTemplates DayTemplate[]
+  workHours        DailyWorkHours[]
+  workSessions     WorkSession[]
+  emergencies      EmergencyAlert[]
+  fitnessStats     DailyFitnessStat[]
+  workoutLogs      WorkoutLog[]
+  vrEquipment      VREquipment?
+  challenges       ChallengeProgress[]
+  refreshTokens    RefreshToken[]
+  passwordReset    PasswordReset?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -114,27 +115,105 @@ model HabitCompletion {
   @@unique([habitId, completedDate])
 }
 
+// ======================================================
+// DAY PLANNER
+// ======================================================
+
 model DailyPlan {
   id     String @id @default(uuid())
   userId String
-  user   User   @relation(fields: [userId], references: [id])
 
-  date      DateTime // The day being planned
-  mainFocus String? // e.g., "Maintain calm seas mindset"
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Stored as UTC midnight for the selected day
+  date DateTime
+
+  mainFocus String?
 
   activities Activity[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, date])
+  @@index([userId, date])
 }
 
-model Activity {
-  id          String    @id @default(uuid())
-  dailyPlanId String
-  dailyPlan   DailyPlan @relation(fields: [dailyPlanId], references: [id])
+// ======================================================
+// DAILY ACTIVITY
+// ======================================================
 
-  title           String // e.g., "Sunrise Meditation"
-  category        String // "wellness", "work", "nutrition"
+model Activity {
+  id          String @id @default(uuid())
+  dailyPlanId String
+
+  dailyPlan DailyPlan @relation(fields: [dailyPlanId], references: [id], onDelete: Cascade)
+
+  title    String
+  category String
+
   startTime       DateTime
   durationMinutes Int
-  isCompleted     Boolean  @default(false)
+
+  note String?
+
+  isCompleted Boolean @default(false)
+
+  // MANUAL or TEMPLATE
+  source String @default("MANUAL")
+
+  // USER or SYSTEM when source = TEMPLATE
+  sourceTemplateId   String?
+  sourceTemplateType String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([dailyPlanId, startTime])
+}
+
+// ======================================================
+// USER-CREATED DAY TEMPLATES
+// ======================================================
+
+model DayTemplate {
+  id     String @id @default(uuid())
+  userId String
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  name     String
+  category String?
+
+  lastUsedAt DateTime?
+
+  activities DayTemplateActivity[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, updatedAt])
+}
+
+model DayTemplateActivity {
+  id         String @id @default(uuid())
+  templateId String
+
+  template DayTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  title    String
+  category String
+
+  // Minutes from midnight: 0 - 1439
+  startMinute Int
+
+  durationMinutes Int
+
+  note String?
+
+  order Int @default(0)
+
+  @@index([templateId, order])
 }
 
 // ======================================================

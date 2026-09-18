@@ -248,7 +248,7 @@ const saveWorkIntervalToGrid =
 
 
     while (
-      dayCursor < endedAt
+      dayCursor < endedAt 
     ) {
       const existing =
         await prisma.dailyWorkHours.findUnique({
@@ -1081,20 +1081,23 @@ export const createManualWorkSession =
       const userId =
         req.user?.userId;
 
-
       if (!userId) {
         return res.status(401).json({
           error: "Unauthorized",
         });
       }
 
-
       const {
         startedAt,
         endedAt,
         shipLocation,
-      } = req.body;
 
+        // Local-grid metadata sent by the frontend.
+        selectedDate,
+        startSlotIndex,
+        endSlotIndex,
+        timezoneOffsetMinutes,
+      } = req.body;
 
       if (
         !startedAt ||
@@ -1107,13 +1110,15 @@ export const createManualWorkSession =
         });
       }
 
-
+      // startedAt / endedAt are real ISO instants.
+      // Example in IST:
+      // 09:00 local -> 03:30Z
+      // 12:00 local -> 06:30Z
       const start =
         new Date(startedAt);
 
       const end =
         new Date(endedAt);
-
 
       if (
         Number.isNaN(
@@ -1129,7 +1134,6 @@ export const createManualWorkSession =
         });
       }
 
-
       if (start >= end) {
         return res.status(400).json({
           error:
@@ -1137,22 +1141,17 @@ export const createManualWorkSession =
         });
       }
 
-
-      if (
-        end > new Date()
-      ) {
+      if (end > new Date()) {
         return res.status(400).json({
           error:
             "Manual work session cannot end in the future",
         });
       }
 
-
       const location =
         String(
           shipLocation
         ).trim();
-
 
       if (!location) {
         return res.status(400).json({
@@ -1161,6 +1160,97 @@ export const createManualWorkSession =
         });
       }
 
+      if (location.length > 100) {
+        return res.status(400).json({
+          error:
+            "Ship location cannot exceed 100 characters",
+        });
+      }
+
+      // --------------------------------------------------
+      // Validate optional local-grid metadata.
+      // New frontend always sends these fields.
+      // --------------------------------------------------
+
+      const hasGridMetadata =
+        selectedDate !== undefined ||
+        startSlotIndex !== undefined ||
+        endSlotIndex !== undefined;
+
+      let gridDate: Date | null = null;
+      let gridStartIndex: number | null = null;
+      let gridEndIndex: number | null = null;
+
+      if (hasGridMetadata) {
+        if (
+          typeof selectedDate !== "string"
+        ) {
+          return res.status(400).json({
+            error:
+              "selectedDate is required for a manual grid entry",
+          });
+        }
+
+        gridDate =
+          parseDateOnly(
+            selectedDate
+          );
+
+        if (!gridDate) {
+          return res.status(400).json({
+            error:
+              "Invalid selectedDate. Use YYYY-MM-DD.",
+          });
+        }
+
+        gridStartIndex =
+          Number(startSlotIndex);
+
+        gridEndIndex =
+          Number(endSlotIndex);
+
+        if (
+          !Number.isInteger(
+            gridStartIndex
+          ) ||
+          !Number.isInteger(
+            gridEndIndex
+          ) ||
+          gridStartIndex < 0 ||
+          gridStartIndex > 47 ||
+          gridEndIndex < 1 ||
+          gridEndIndex > 48 ||
+          gridEndIndex <=
+            gridStartIndex
+        ) {
+          return res.status(400).json({
+            error:
+              "Invalid manual work slot range",
+          });
+        }
+      }
+
+      // timezoneOffsetMinutes is intentionally not used to
+      // calculate the slots here. The frontend already sends
+      // the exact slots the user selected. Keeping it in the
+      // payload is still useful for logs/debugging.
+      if (
+        timezoneOffsetMinutes !== undefined &&
+        !Number.isFinite(
+          Number(
+            timezoneOffsetMinutes
+          )
+        )
+      ) {
+        return res.status(400).json({
+          error:
+            "Invalid timezone offset",
+        });
+      }
+
+      // --------------------------------------------------
+      // Work-session overlap uses the REAL UTC instants.
+      // --------------------------------------------------
 
       const overlap =
         await findOverlappingSession(
@@ -1168,7 +1258,6 @@ export const createManualWorkSession =
           start,
           end
         );
-
 
       if (overlap) {
         return res.status(409).json({
@@ -1180,43 +1269,123 @@ export const createManualWorkSession =
         });
       }
 
+      // --------------------------------------------------
+      // Save session + local grid atomically for new clients.
+      // --------------------------------------------------
 
-      const session =
-        await prisma.workSession.create({
-          data: {
-            userId,
+      let session;
 
-            shipLocation:
-              location,
+      if (
+        gridDate &&
+        gridStartIndex !== null &&
+        gridEndIndex !== null
+      ) {
+        session =
+          await prisma.$transaction(
+            async (tx) => {
+              const created =
+                await tx.workSession.create({
+                  data: {
+                    userId,
+                    shipLocation:
+                      location,
+                    startedAt:
+                      start,
+                    endedAt:
+                      end,
+                    source:
+                      "MANUAL",
+                    status:
+                      "COMPLETED",
+                  },
+                });
 
-            startedAt:
-              start,
+              const existing =
+                await tx.dailyWorkHours.findUnique({
+                  where: {
+                    userId_date: {
+                      userId,
+                      date:
+                        gridDate as Date,
+                    },
+                  },
+                });
 
-            endedAt:
-              end,
+              const blocks =
+                normalizeBlocks(
+                  existing?.statusBlocks
+                );
 
-            source:
-              "MANUAL",
+              // Mark exactly the slots selected in the local UI.
+              // Example 09:00 -> 12:00 means slots 18..23.
+              for (
+                let index =
+                  gridStartIndex as number;
+                index <
+                (gridEndIndex as number);
+                index++
+              ) {
+                blocks[index] =
+                  "WORK";
+              }
 
-            status:
-              "COMPLETED",
-          },
-        });
+              await tx.dailyWorkHours.upsert({
+                where: {
+                  userId_date: {
+                    userId,
+                    date:
+                      gridDate as Date,
+                  },
+                },
 
+                update: {
+                  statusBlocks:
+                    blocks,
+                },
 
-      await saveWorkIntervalToGrid(
-        userId,
-        start,
-        end
-      );
+                create: {
+                  userId,
+                  date:
+                    gridDate as Date,
+                  statusBlocks:
+                    blocks,
+                },
+              });
 
+              return created;
+            }
+          );
+      } else {
+        // Backward compatibility for old clients that only send
+        // startedAt / endedAt / shipLocation.
+        session =
+          await prisma.workSession.create({
+            data: {
+              userId,
+              shipLocation:
+                location,
+              startedAt:
+                start,
+              endedAt:
+                end,
+              source:
+                "MANUAL",
+              status:
+                "COMPLETED",
+            },
+          });
+
+        await saveWorkIntervalToGrid(
+          userId,
+          start,
+          end
+        );
+      }
 
       return res.status(201).json({
         status: "success",
-
         message:
           "Manual work session saved",
-
         data: session,
       });
 
@@ -1232,7 +1401,7 @@ export const createManualWorkSession =
       });
     }
   };
-
+  
 
 // ======================================================
 // DAILY SUMMARY

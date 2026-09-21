@@ -9,6 +9,7 @@ import profileRoutes from './routes/profile.route';
 import dailyPlanRoutes from './routes/dailyPlan.route';
 import habitRouter from './routes/habit.route';
 import workHoursRouter from './routes/workHours.route';
+import googleCalendarRoutes from "./routes/googleCalendar.route";
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -35,6 +36,10 @@ app.use('/api/profile', profileRoutes);
 app.use('/api/daily-plan', dailyPlanRoutes);
 app.use('/api/habits', habitRouter);
 app.use('/api/work-hours', workHoursRouter);
+app.use(
+  "/api/google-calendar",
+  googleCalendarRoutes
+);
 
 if (process.env.NODE_ENV !== 'production') {
     app.listen(PORT, () => {

@@ -3,8 +3,9 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_DATABASE_URL")
 }
 
 // USERS
@@ -36,19 +37,20 @@ model User {
   avatarId   String?
 
   // Relationships
-  moodLogs         MoodLog[]
-  habits           Habit[]
-  dailyPlans       DailyPlan[]
-  plannerTemplates DayTemplate[]
-  workHours        DailyWorkHours[]
-  workSessions     WorkSession[]
-  emergencies      EmergencyAlert[]
-  fitnessStats     DailyFitnessStat[]
-  workoutLogs      WorkoutLog[]
-  vrEquipment      VREquipment?
-  challenges       ChallengeProgress[]
-  refreshTokens    RefreshToken[]
-  passwordReset    PasswordReset?
+  moodLogs                 MoodLog[]
+  habits                   Habit[]
+  dailyPlans               DailyPlan[]
+  plannerTemplates         DayTemplate[]
+  googleCalendarConnection GoogleCalendarConnection?
+  workHours                DailyWorkHours[]
+  workSessions             WorkSession[]
+  emergencies              EmergencyAlert[]
+  fitnessStats             DailyFitnessStat[]
+  workoutLogs              WorkoutLog[]
+  vrEquipment              VREquipment?
+  challenges               ChallengeProgress[]
+  refreshTokens            RefreshToken[]
+  passwordReset            PasswordReset?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -166,10 +168,76 @@ model Activity {
   sourceTemplateId   String?
   sourceTemplateType String?
 
+  // ====================================================
+  // ACTIVITY TIMEZONE
+  //
+  // Example:
+  // Asia/Kolkata
+  // Europe/London
+  //
+  // Important for Google Calendar because seafarers
+  // may operate in different timezones.
+  // ====================================================
+
+  timeZone String?
+
+  // ====================================================
+  // GOOGLE CALENDAR SYNC
+  // ====================================================
+
+  googleEventId    String?
+  googleCalendarId String?
+
+  // NOT_SYNCED
+  // NOT_CONNECTED
+  // SYNCED
+  // FAILED
+  googleSyncStatus String @default("NOT_SYNCED")
+
+  googleSyncError String?
+  googleSyncedAt  DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([dailyPlanId, startTime])
+  @@index([googleEventId])
+}
+
+// ======================================================
+// GOOGLE CALENDAR CONNECTION
+// ======================================================
+
+model GoogleCalendarConnection {
+  id     String @id @default(uuid())
+  userId String @unique
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Actual Google account connected through OAuth
+  googleEmail String?
+
+  // Normally "primary"
+  calendarId String @default("primary")
+
+  // Default timezone for this connection
+  // Example: Asia/Kolkata
+  timeZone String @default("UTC")
+
+  // NEVER store Google's refresh token as plain text.
+  // We encrypt it using GOOGLE_TOKEN_ENCRYPTION_KEY.
+  refreshTokenEncrypted String
+
+  scopes String[] @default([])
+
+  isActive Boolean @default(true)
+
+  // Google Calendar reminders
+  emailReminderMinutes Int @default(30)
+  popupReminderMinutes Int @default(10)
+
+  connectedAt DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
 
 // ======================================================

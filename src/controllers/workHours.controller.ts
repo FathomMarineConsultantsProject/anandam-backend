@@ -138,17 +138,17 @@ const getSlotTimeRange = (
 ) => {
   const start = new Date(
     dayStart.getTime() +
-      slotIndex *
-        MINUTES_PER_BLOCK *
-        60 *
-        1000
+    slotIndex *
+    MINUTES_PER_BLOCK *
+    60 *
+    1000
   );
 
   const end = new Date(
     start.getTime() +
-      MINUTES_PER_BLOCK *
-        60 *
-        1000
+    MINUTES_PER_BLOCK *
+    60 *
+    1000
   );
 
   return {
@@ -205,7 +205,7 @@ const applyIntervalToBlocks = (
     0,
     Math.floor(
       startMinutes /
-        MINUTES_PER_BLOCK
+      MINUTES_PER_BLOCK
     )
   );
 
@@ -214,7 +214,7 @@ const applyIntervalToBlocks = (
     BLOCKS_PER_DAY,
     Math.ceil(
       endMinutes /
-        MINUTES_PER_BLOCK
+      MINUTES_PER_BLOCK
     )
   );
 
@@ -248,7 +248,7 @@ const saveWorkIntervalToGrid =
 
 
     while (
-      dayCursor < endedAt 
+      dayCursor < endedAt
     ) {
       const existing =
         await prisma.dailyWorkHours.findUnique({
@@ -407,9 +407,9 @@ const subtractExistingWork = (
       .filter(
         interval =>
           interval.start <
-            requestedEnd &&
+          requestedEnd &&
           interval.end >
-            requestedStart
+          requestedStart
       )
       .sort(
         (a, b) =>
@@ -433,9 +433,9 @@ const subtractExistingWork = (
       // No overlap
       if (
         existing.end <=
-          segment.start ||
+        segment.start ||
         existing.start >=
-          segment.end
+        segment.end
       ) {
         nextRemaining.push(
           segment
@@ -456,7 +456,7 @@ const subtractExistingWork = (
 
           end:
             existing.start <
-            segment.end
+              segment.end
               ? existing.start
               : segment.end,
         });
@@ -471,7 +471,7 @@ const subtractExistingWork = (
         nextRemaining.push({
           start:
             existing.end >
-            segment.start
+              segment.start
               ? existing.end
               : segment.start,
 
@@ -551,7 +551,7 @@ const getNonWorkConflicts = (
       startIndex;
 
     index <
-      endIndex;
+    endIndex;
 
     index++
   ) {
@@ -647,20 +647,32 @@ const buildDayResponse =
     */
     const now = new Date();
 
-
-    for (
-      const session of sessions
-    ) {
-      const end =
-        session.endedAt ??
-        now;
+    /*
+      IMPORTANT:
+    
+      Completed sessions have already been written into
+      DailyWorkHours.statusBlocks.
+    
+      Do NOT overlay completed WorkSession UTC timestamps
+      onto the local 48-slot grid again.
+    
+      Only an ACTIVE clock-in session needs a temporary
+      overlay before it has been clocked out.
+    */
+    for (const session of sessions) {
+      if (
+        session.status !== "ACTIVE" ||
+        session.endedAt !== null
+      ) {
+        continue;
+      }
 
       blocks =
         applyIntervalToBlocks(
           blocks,
           dayStart,
           session.startedAt,
-          end,
+          now,
           "WORK"
         );
     }
@@ -670,7 +682,7 @@ const buildDayResponse =
       sessions.find(
         (session) =>
           session.status ===
-            "ACTIVE" &&
+          "ACTIVE" &&
           session.endedAt === null
       ) ?? null;
 
@@ -686,6 +698,10 @@ const buildDayResponse =
 
       statusBlocks:
         blocks,
+
+      commentOfDay:
+        record?.commentOfDay ??
+        null,
 
       sessions,
 
@@ -962,9 +978,9 @@ export const updateMyDaySlots =
 
               return (
                 session.startedAt <
-                  slot.end &&
+                slot.end &&
                 sessionEnd >
-                  slot.start
+                slot.start
               );
             }
           );
@@ -1056,6 +1072,157 @@ export const updateMyDaySlots =
     }
   };
 
+  // ======================================================
+// DELETE ONE REST / MEAL SLOT
+// DELETE /api/work-hours/day/:date/slots/:slotIndex
+// ======================================================
+
+export const deleteMyDaySlot =
+  async (
+    req: AuthRequest,
+    res: Response
+  ): Promise<any> => {
+    try {
+      const userId =
+        req.user?.userId;
+
+      if (!userId) {
+        return res.status(401).json({
+          error: "Unauthorized",
+        });
+      }
+
+      const dateString =
+        getParam(
+          req.params.date
+        );
+
+      const slotIndexString =
+        getParam(
+          req.params.slotIndex
+        );
+
+      if (
+        !dateString ||
+        slotIndexString === undefined
+      ) {
+        return res.status(400).json({
+          error:
+            "Date and slotIndex are required",
+        });
+      }
+
+      const date =
+        parseDateOnly(
+          dateString
+        );
+
+      if (!date) {
+        return res.status(400).json({
+          error:
+            "Invalid date. Use YYYY-MM-DD.",
+        });
+      }
+
+      const slotIndex =
+        Number(
+          slotIndexString
+        );
+
+      if (
+        !Number.isInteger(
+          slotIndex
+        ) ||
+        slotIndex < 0 ||
+        slotIndex > 47
+      ) {
+        return res.status(400).json({
+          error:
+            "slotIndex must be between 0 and 47",
+        });
+      }
+
+      const existing =
+        await prisma.dailyWorkHours.findUnique({
+          where: {
+            userId_date: {
+              userId,
+              date,
+            },
+          },
+        });
+
+      if (!existing) {
+        return res.status(404).json({
+          error:
+            "Work/rest record not found",
+        });
+      }
+
+      const blocks =
+        normalizeBlocks(
+          existing.statusBlocks
+        );
+
+      /*
+        WORK is linked to WorkSession.
+        It must therefore be deleted through
+        DELETE /sessions/:sessionId.
+      */
+      if (
+        blocks[slotIndex] ===
+        "WORK"
+      ) {
+        return res.status(409).json({
+          error:
+            "Work time must be deleted through its work session.",
+        });
+      }
+
+      blocks[slotIndex] =
+        "UNRECORDED";
+
+      await prisma.dailyWorkHours.update({
+        where: {
+          userId_date: {
+            userId,
+            date,
+          },
+        },
+
+        data: {
+          statusBlocks:
+            blocks,
+        },
+      });
+
+      const data =
+        await buildDayResponse(
+          userId,
+          date
+        );
+
+      return res.status(200).json({
+        status: "success",
+
+        message:
+          "Slot deleted successfully",
+
+        data,
+      });
+
+    } catch (error) {
+      console.error(
+        "Delete slot error:",
+        error
+      );
+
+      return res.status(500).json({
+        error:
+          "Failed to delete slot",
+      });
+    }
+  };
 
 // ======================================================
 // CLOCK IN
@@ -1081,7 +1248,7 @@ export const clockIn = async (
     const shipLocation =
       String(
         req.body.shipLocation ??
-          ""
+        ""
       ).trim();
 
 
@@ -1509,7 +1676,7 @@ export const createManualWorkSession =
           gridEndIndex < 1 ||
           gridEndIndex > 48 ||
           gridEndIndex <=
-            gridStartIndex
+          gridStartIndex
         ) {
           return res.status(400).json({
             error:
@@ -1521,7 +1688,7 @@ export const createManualWorkSession =
 
       if (
         timezoneOffsetMinutes !==
-          undefined &&
+        undefined &&
         !Number.isFinite(
           Number(
             timezoneOffsetMinutes
@@ -1649,7 +1816,7 @@ export const createManualWorkSession =
               // already recorded as WORK.
               for (
                 const segment of
-                  missingWorkSegments
+                missingWorkSegments
               ) {
 
                 const session =
@@ -1719,7 +1886,7 @@ export const createManualWorkSession =
                   gridStartIndex as number;
 
                 index <
-                  (gridEndIndex as number);
+                (gridEndIndex as number);
 
                 index++
               ) {
@@ -1772,7 +1939,7 @@ export const createManualWorkSession =
 
         for (
           const segment of
-            missingWorkSegments
+          missingWorkSegments
         ) {
 
           const session =
@@ -1818,16 +1985,16 @@ export const createManualWorkSession =
 
       const alreadyRecorded =
         overlappingSessions.length >
-          0 &&
+        0 &&
         missingWorkSegments.length ===
-          0;
+        0;
 
 
       const extendedExistingWork =
         overlappingSessions.length >
-          0 &&
+        0 &&
         missingWorkSegments.length >
-          0;
+        0;
 
 
       let code =
@@ -1860,9 +2027,9 @@ export const createManualWorkSession =
       const refreshedDay =
         gridDate
           ? await buildDayResponse(
-              userId,
-              gridDate
-            )
+            userId,
+            gridDate
+          )
           : null;
 
 
@@ -1929,7 +2096,7 @@ export const createManualWorkSession =
       });
     }
   };
-  
+
 
 // ======================================================
 // DAILY SUMMARY
@@ -2096,6 +2263,854 @@ export const getMyWorkRestHistory =
       return res.status(500).json({
         error:
           "Failed to fetch work/rest history",
+      });
+    }
+  };
+
+  // ======================================================
+// UPDATE COMMENT OF THE DAY
+// PATCH /api/work-hours/day/:date/comment
+// ======================================================
+
+export const updateDayComment =
+  async (
+    req: AuthRequest,
+    res: Response
+  ): Promise<any> => {
+    try {
+      const userId =
+        req.user?.userId;
+
+      if (!userId) {
+        return res.status(401).json({
+          error: "Unauthorized",
+        });
+      }
+
+      const dateString =
+        getParam(
+          req.params.date
+        );
+
+      if (!dateString) {
+        return res.status(400).json({
+          error:
+            "Date is required",
+        });
+      }
+
+      const date =
+        parseDateOnly(
+          dateString
+        );
+
+      if (!date) {
+        return res.status(400).json({
+          error:
+            "Invalid date. Use YYYY-MM-DD.",
+        });
+      }
+
+      const comment =
+        String(
+          req.body.comment ?? ""
+        ).trim();
+
+      if (!comment) {
+        return res.status(400).json({
+          error:
+            "Comment cannot be empty",
+        });
+      }
+
+      if (
+        comment.length > 1000
+      ) {
+        return res.status(400).json({
+          error:
+            "Comment cannot exceed 1000 characters",
+        });
+      }
+
+      await prisma.dailyWorkHours.upsert({
+        where: {
+          userId_date: {
+            userId,
+            date,
+          },
+        },
+
+        update: {
+          commentOfDay:
+            comment,
+        },
+
+        create: {
+          userId,
+          date,
+
+          statusBlocks:
+            createEmptyBlocks(),
+
+          commentOfDay:
+            comment,
+        },
+      });
+
+      const data =
+        await buildDayResponse(
+          userId,
+          date
+        );
+
+      return res.status(200).json({
+        status: "success",
+
+        message:
+          "Comment updated successfully",
+
+        data,
+      });
+
+    } catch (error) {
+      console.error(
+        "Update day comment error:",
+        error
+      );
+
+      return res.status(500).json({
+        error:
+          "Failed to update comment",
+      });
+    }
+  };
+
+
+// ======================================================
+// DELETE COMMENT OF THE DAY
+// DELETE /api/work-hours/day/:date/comment
+// ======================================================
+
+export const deleteDayComment =
+  async (
+    req: AuthRequest,
+    res: Response
+  ): Promise<any> => {
+    try {
+      const userId =
+        req.user?.userId;
+
+      if (!userId) {
+        return res.status(401).json({
+          error: "Unauthorized",
+        });
+      }
+
+      const dateString =
+        getParam(
+          req.params.date
+        );
+
+      if (!dateString) {
+        return res.status(400).json({
+          error:
+            "Date is required",
+        });
+      }
+
+      const date =
+        parseDateOnly(
+          dateString
+        );
+
+      if (!date) {
+        return res.status(400).json({
+          error:
+            "Invalid date. Use YYYY-MM-DD.",
+        });
+      }
+
+      const existing =
+        await prisma.dailyWorkHours.findUnique({
+          where: {
+            userId_date: {
+              userId,
+              date,
+            },
+          },
+        });
+
+      if (!existing) {
+        return res.status(404).json({
+          error:
+            "Work/rest record not found",
+        });
+      }
+
+      await prisma.dailyWorkHours.update({
+        where: {
+          userId_date: {
+            userId,
+            date,
+          },
+        },
+
+        data: {
+          commentOfDay:
+            null,
+        },
+      });
+
+      const data =
+        await buildDayResponse(
+          userId,
+          date
+        );
+
+      return res.status(200).json({
+        status: "success",
+
+        message:
+          "Comment deleted successfully",
+
+        data,
+      });
+
+    } catch (error) {
+      console.error(
+        "Delete day comment error:",
+        error
+      );
+
+      return res.status(500).json({
+        error:
+          "Failed to delete comment",
+      });
+    }
+  };
+
+  // ======================================================
+// UPDATE COMPLETED WORK SESSION
+// PATCH /api/work-hours/sessions/:sessionId
+// ======================================================
+
+export const updateWorkSession =
+  async (
+    req: AuthRequest,
+    res: Response
+  ): Promise<any> => {
+    try {
+      const userId =
+        req.user?.userId;
+
+      if (!userId) {
+        return res.status(401).json({
+          error: "Unauthorized",
+        });
+      }
+
+      const sessionId =
+        getParam(
+          req.params.sessionId
+        );
+
+      if (!sessionId) {
+        return res.status(400).json({
+          error:
+            "sessionId is required",
+        });
+      }
+
+      const existingSession =
+        await prisma.workSession.findFirst({
+          where: {
+            id: sessionId,
+            userId,
+          },
+        });
+
+      if (!existingSession) {
+        return res.status(404).json({
+          error:
+            "Work session not found",
+        });
+      }
+
+      if (
+        existingSession.status ===
+          "ACTIVE" ||
+        existingSession.endedAt ===
+          null
+      ) {
+        return res.status(409).json({
+          error:
+            "An active work session cannot be edited. Clock out first.",
+        });
+      }
+
+      const {
+        startedAt,
+        endedAt,
+        shipLocation,
+
+        selectedDate,
+
+        oldStartSlotIndex,
+        oldEndSlotIndex,
+
+        startSlotIndex,
+        endSlotIndex,
+      } = req.body;
+
+      const start =
+        startedAt
+          ? new Date(startedAt)
+          : existingSession.startedAt;
+
+      const end =
+        endedAt
+          ? new Date(endedAt)
+          : existingSession.endedAt;
+
+      if (
+        !end ||
+        Number.isNaN(
+          start.getTime()
+        ) ||
+        Number.isNaN(
+          end.getTime()
+        )
+      ) {
+        return res.status(400).json({
+          error:
+            "Invalid start/end date",
+        });
+      }
+
+      if (start >= end) {
+        return res.status(400).json({
+          error:
+            "End time must be after start time",
+        });
+      }
+
+      if (
+        end >
+        new Date()
+      ) {
+        return res.status(400).json({
+          error:
+            "Work session cannot end in the future",
+        });
+      }
+
+      const location =
+        shipLocation !== undefined
+          ? String(
+              shipLocation
+            ).trim()
+          : existingSession.shipLocation;
+
+      if (!location) {
+        return res.status(400).json({
+          error:
+            "Ship location is required",
+        });
+      }
+
+      if (
+        location.length > 100
+      ) {
+        return res.status(400).json({
+          error:
+            "Ship location cannot exceed 100 characters",
+        });
+      }
+
+      const gridDate =
+        typeof selectedDate ===
+        "string"
+          ? parseDateOnly(
+              selectedDate
+            )
+          : null;
+
+      if (!gridDate) {
+        return res.status(400).json({
+          error:
+            "selectedDate is required. Use YYYY-MM-DD.",
+        });
+      }
+
+      const oldStart =
+        Number(
+          oldStartSlotIndex
+        );
+
+      const oldEnd =
+        Number(
+          oldEndSlotIndex
+        );
+
+      const newStart =
+        Number(
+          startSlotIndex
+        );
+
+      const newEnd =
+        Number(
+          endSlotIndex
+        );
+
+      const validRange = (
+        startIndex: number,
+        endIndex: number
+      ) =>
+        Number.isInteger(
+          startIndex
+        ) &&
+        Number.isInteger(
+          endIndex
+        ) &&
+        startIndex >= 0 &&
+        startIndex <= 47 &&
+        endIndex >= 1 &&
+        endIndex <= 48 &&
+        endIndex >
+          startIndex;
+
+      if (
+        !validRange(
+          oldStart,
+          oldEnd
+        ) ||
+        !validRange(
+          newStart,
+          newEnd
+        )
+      ) {
+        return res.status(400).json({
+          error:
+            "Invalid work slot range",
+        });
+      }
+
+      /*
+        Prevent two independent WorkSession records
+        occupying the same real interval.
+      */
+      const overlappingSession =
+        await prisma.workSession.findFirst({
+          where: {
+            userId,
+
+            id: {
+              not:
+                sessionId,
+            },
+
+            startedAt: {
+              lt: end,
+            },
+
+            OR: [
+              {
+                endedAt: null,
+              },
+
+              {
+                endedAt: {
+                  gt: start,
+                },
+              },
+            ],
+          },
+        });
+
+      if (overlappingSession) {
+        return res.status(409).json({
+          status:
+            "conflict",
+
+          code:
+            "WORK_SESSION_CONFLICT",
+
+          error:
+            "The updated time overlaps another work session.",
+        });
+      }
+
+      const existingGrid =
+        await prisma.dailyWorkHours.findUnique({
+          where: {
+            userId_date: {
+              userId,
+              date:
+                gridDate,
+            },
+          },
+        });
+
+      const blocks =
+        normalizeBlocks(
+          existingGrid
+            ?.statusBlocks
+        );
+
+      /*
+        Remove the old visual work range first.
+      */
+      for (
+        let index =
+          oldStart;
+        index <
+          oldEnd;
+        index++
+      ) {
+        if (
+          blocks[index] ===
+          "WORK"
+        ) {
+          blocks[index] =
+            "UNRECORDED";
+        }
+      }
+
+      /*
+        New WORK cannot replace REST or MEAL.
+      */
+      const conflicts =
+        getNonWorkConflicts(
+          blocks,
+          newStart,
+          newEnd
+        );
+
+      if (
+        conflicts.length > 0
+      ) {
+        return res.status(409).json({
+          status:
+            "conflict",
+
+          code:
+            "REST_MEAL_CONFLICT",
+
+          error:
+            "Selected work time overlaps a Rest or Meal period.",
+
+          conflicts,
+        });
+      }
+
+      for (
+        let index =
+          newStart;
+        index <
+          newEnd;
+        index++
+      ) {
+        blocks[index] =
+          "WORK";
+      }
+
+      const updatedSession =
+        await prisma.$transaction(
+          async tx => {
+            const updated =
+              await tx.workSession.update({
+                where: {
+                  id:
+                    sessionId,
+                },
+
+                data: {
+                  startedAt:
+                    start,
+
+                  endedAt:
+                    end,
+
+                  shipLocation:
+                    location,
+
+                  status:
+                    "COMPLETED",
+                },
+              });
+
+            await tx.dailyWorkHours.upsert({
+              where: {
+                userId_date: {
+                  userId,
+
+                  date:
+                    gridDate,
+                },
+              },
+
+              update: {
+                statusBlocks:
+                  blocks,
+              },
+
+              create: {
+                userId,
+
+                date:
+                  gridDate,
+
+                statusBlocks:
+                  blocks,
+              },
+            });
+
+            return updated;
+          }
+        );
+
+      const day =
+        await buildDayResponse(
+          userId,
+          gridDate
+        );
+
+      return res.status(200).json({
+        status:
+          "success",
+
+        message:
+          "Work session updated successfully",
+
+        data:
+          updatedSession,
+
+        day,
+      });
+
+    } catch (error) {
+      console.error(
+        "Update work session error:",
+        error
+      );
+
+      return res.status(500).json({
+        error:
+          "Failed to update work session",
+      });
+    }
+  };
+
+  // ======================================================
+// DELETE COMPLETED WORK SESSION
+// DELETE /api/work-hours/sessions/:sessionId
+// ======================================================
+
+export const deleteWorkSession =
+  async (
+    req: AuthRequest,
+    res: Response
+  ): Promise<any> => {
+    try {
+      const userId =
+        req.user?.userId;
+
+      if (!userId) {
+        return res.status(401).json({
+          error: "Unauthorized",
+        });
+      }
+
+      const sessionId =
+        getParam(
+          req.params.sessionId
+        );
+
+      if (!sessionId) {
+        return res.status(400).json({
+          error:
+            "sessionId is required",
+        });
+      }
+
+      const session =
+        await prisma.workSession.findFirst({
+          where: {
+            id:
+              sessionId,
+
+            userId,
+          },
+        });
+
+      if (!session) {
+        return res.status(404).json({
+          error:
+            "Work session not found",
+        });
+      }
+
+      if (
+        session.status ===
+          "ACTIVE" ||
+        session.endedAt ===
+          null
+      ) {
+        return res.status(409).json({
+          error:
+            "An active work session cannot be deleted. Clock out first.",
+        });
+      }
+
+      const {
+        selectedDate,
+        startSlotIndex,
+        endSlotIndex,
+      } = req.body;
+
+      const gridDate =
+        typeof selectedDate ===
+        "string"
+          ? parseDateOnly(
+              selectedDate
+            )
+          : null;
+
+      if (!gridDate) {
+        return res.status(400).json({
+          error:
+            "selectedDate is required. Use YYYY-MM-DD.",
+        });
+      }
+
+      const startIndex =
+        Number(
+          startSlotIndex
+        );
+
+      const endIndex =
+        Number(
+          endSlotIndex
+        );
+
+      if (
+        !Number.isInteger(
+          startIndex
+        ) ||
+        !Number.isInteger(
+          endIndex
+        ) ||
+        startIndex < 0 ||
+        startIndex > 47 ||
+        endIndex < 1 ||
+        endIndex > 48 ||
+        endIndex <=
+          startIndex
+      ) {
+        return res.status(400).json({
+          error:
+            "Invalid work slot range",
+        });
+      }
+
+      const existingGrid =
+        await prisma.dailyWorkHours.findUnique({
+          where: {
+            userId_date: {
+              userId,
+
+              date:
+                gridDate,
+            },
+          },
+        });
+
+      const blocks =
+        normalizeBlocks(
+          existingGrid
+            ?.statusBlocks
+        );
+
+      for (
+        let index =
+          startIndex;
+
+        index <
+          endIndex;
+
+        index++
+      ) {
+        if (
+          blocks[index] ===
+          "WORK"
+        ) {
+          blocks[index] =
+            "UNRECORDED";
+        }
+      }
+
+      await prisma.$transaction(
+        async tx => {
+          await tx.workSession.delete({
+            where: {
+              id:
+                sessionId,
+            },
+          });
+
+          await tx.dailyWorkHours.upsert({
+            where: {
+              userId_date: {
+                userId,
+
+                date:
+                  gridDate,
+              },
+            },
+
+            update: {
+              statusBlocks:
+                blocks,
+            },
+
+            create: {
+              userId,
+
+              date:
+                gridDate,
+
+              statusBlocks:
+                blocks,
+            },
+          });
+        }
+      );
+
+      const day =
+        await buildDayResponse(
+          userId,
+          gridDate
+        );
+
+      return res.status(200).json({
+        status:
+          "success",
+
+        message:
+          "Work session deleted successfully",
+
+        day,
+      });
+
+    } catch (error) {
+      console.error(
+        "Delete work session error:",
+        error
+      );
+
+      return res.status(500).json({
+        error:
+          "Failed to delete work session",
       });
     }
   };

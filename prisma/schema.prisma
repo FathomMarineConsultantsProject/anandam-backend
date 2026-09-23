@@ -52,8 +52,9 @@ model User {
   refreshTokens            RefreshToken[]
   passwordReset            PasswordReset?
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt             DateTime                @default(now())
+  updatedAt             DateTime                @updatedAt
+  FitnessWorkoutSession FitnessWorkoutSession[]
 }
 
 // MOOD AND WELLNESS
@@ -460,4 +461,102 @@ model PasswordReset {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+// Add this relation inside your existing User model:
+// fitnessWorkoutSessions FitnessWorkoutSession[]
+
+model FitnessWorkout {
+  id   String @id @default(uuid())
+  slug String @unique
+
+  // GUIDED or VR
+  type String
+
+  title           String
+  category        String
+  difficulty      String
+  durationMinutes Int
+
+  shortDescription String
+  about            String
+
+  thumbnailUrl   String?
+  youtubeVideoId String?
+
+  benefits          String[] @default([])
+  beforeYouBegin    String[] @default([])
+  requiredEquipment String[] @default([])
+
+  vrLaunchUrl String?
+
+  isActive  Boolean @default(true)
+  sortOrder Int     @default(0)
+
+  sessions FitnessWorkoutSession[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([type, isActive, sortOrder])
+  @@index([category])
+  @@index([difficulty])
+}
+
+model FitnessWorkoutSession {
+  id String @id @default(uuid())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  workoutId String
+  workout   FitnessWorkout @relation(fields: [workoutId], references: [id], onDelete: Restrict)
+
+  // IN_PROGRESS / COMPLETED / ABANDONED
+  status String @default("IN_PROGRESS")
+
+  progressPercent Float @default(0)
+  positionSeconds Int   @default(0)
+
+  confirmedEquipment String[] @default([])
+
+  startedAt   DateTime  @default(now())
+  completedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, status, updatedAt])
+  @@index([userId, completedAt])
+  @@index([workoutId])
+}
+
+model FitnessChallenge {
+  id String @id @default(uuid())
+
+  title       String
+  description String
+
+  // ALL_COMPLETIONS / GUIDED_COMPLETIONS / VR_COMPLETIONS
+  metric String
+
+  targetValue Int
+  unit        String @default("workouts")
+
+  // CALENDAR_MONTH for the current Figma flow
+  period String @default("CALENDAR_MONTH")
+
+  startDate DateTime?
+  endDate   DateTime?
+
+  // Frontend can map GOLD / GREEN / PURPLE to Figma colors
+  themeKey String?
+
+  isActive  Boolean @default(true)
+  sortOrder Int     @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([isActive, sortOrder])
 }

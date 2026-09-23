@@ -301,6 +301,9 @@ model DailyWorkHours {
   // WORK / REST / MEAL / UNRECORDED
   statusBlocks String[] @default([])
 
+  // One comment for the whole day
+  commentOfDay String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

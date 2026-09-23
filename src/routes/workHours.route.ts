@@ -1,14 +1,22 @@
-import { Router } from "express";
+import {
+  Router,
+} from "express";
 
 import {
   getMyWorkDay,
   updateMyDaySlots,
+  deleteMyDaySlot,
+
+  updateDayComment,
+  deleteDayComment,
 
   clockIn,
   clockOut,
   getActiveSession,
-
   createManualWorkSession,
+
+  updateWorkSession,
+  deleteWorkSession,
 
   getDailySummary,
   getMyWorkRestHistory,
@@ -18,10 +26,15 @@ import {
   authenticateToken,
 } from "../middleware/auth.middleware";
 
-const router = Router();
+
+const router =
+  Router();
 
 
-// Selected day
+// ======================================================
+// SELECTED DAY
+// ======================================================
+
 router.get(
   "/day/:date",
   authenticateToken,
@@ -29,7 +42,7 @@ router.get(
 );
 
 
-// Change Rest / Meal / Unrecorded
+// Existing REST / MEAL update
 router.patch(
   "/day/:date/slots",
   authenticateToken,
@@ -37,7 +50,36 @@ router.patch(
 );
 
 
-// Current active work session
+// Delete one REST / MEAL slot
+router.delete(
+  "/day/:date/slots/:slotIndex",
+  authenticateToken,
+  deleteMyDaySlot
+);
+
+
+// ======================================================
+// COMMENT OF THE DAY
+// ======================================================
+
+router.patch(
+  "/day/:date/comment",
+  authenticateToken,
+  updateDayComment
+);
+
+
+router.delete(
+  "/day/:date/comment",
+  authenticateToken,
+  deleteDayComment
+);
+
+
+// ======================================================
+// WORK SESSIONS
+// ======================================================
+
 router.get(
   "/sessions/active",
   authenticateToken,
@@ -45,7 +87,6 @@ router.get(
 );
 
 
-// Live clock in
 router.post(
   "/sessions/clock-in",
   authenticateToken,
@@ -53,7 +94,6 @@ router.post(
 );
 
 
-// Live clock out
 router.post(
   "/sessions/clock-out",
   authenticateToken,
@@ -61,7 +101,6 @@ router.post(
 );
 
 
-// Missed / historical work entry
 router.post(
   "/sessions/manual",
   authenticateToken,
@@ -69,7 +108,26 @@ router.post(
 );
 
 
-// Daily cards / MLC summary
+// Edit existing completed work
+router.patch(
+  "/sessions/:sessionId",
+  authenticateToken,
+  updateWorkSession
+);
+
+
+// Delete existing completed work
+router.delete(
+  "/sessions/:sessionId",
+  authenticateToken,
+  deleteWorkSession
+);
+
+
+// ======================================================
+// SUMMARY / HISTORY
+// ======================================================
+
 router.get(
   "/summary/:date",
   authenticateToken,
@@ -77,7 +135,6 @@ router.get(
 );
 
 
-// Work/rest history
 router.get(
   "/history",
   authenticateToken,

@@ -184,8 +184,12 @@ async function main() {
 
 main()
   .catch((error) => {
-    console.error("Fitness seed failed:", error);
-    process.exit(1);
+    console.error(
+      "Fitness seed failed:",
+      error
+    );
+
+    throw error;
   })
   .finally(async () => {
     await prisma.$disconnect();

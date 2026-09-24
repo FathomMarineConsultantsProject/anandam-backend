@@ -128,8 +128,7 @@ const workouts = [
     vrLaunchUrl: null,
     isActive: true,
     sortOrder: 7,
-  },,
-
+  },
   {
     slug: "vr-headset-experience-gny20vhlxag",
     type: "VR",

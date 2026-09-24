@@ -128,11 +128,45 @@ const workouts = [
     vrLaunchUrl: null,
     isActive: true,
     sortOrder: 7,
+  },,
+
+  {
+    slug: "vr-headset-experience-gny20vhlxag",
+    type: "VR",
+    title: "VR Headset Experience",
+    category: "VR",
+    difficulty: "BEGINNER",
+    durationMinutes: 10,
+    shortDescription:
+      "An immersive VR video experience designed to be viewed with a VR headset.",
+    about:
+      "Put on your VR headset, make sure you are seated or standing in a clear and safe area, and follow the immersive experience directly inside Anandam.",
+    thumbnailUrl:
+      "https://i.ytimg.com/vi/GnY20VHLxAg/hqdefault.jpg",
+    youtubeVideoId: "GnY20VHLxAg",
+    benefits: [
+      "Provides an immersive VR experience",
+      "Encourages focused engagement",
+      "Adds variety to the onboard fitness and wellbeing routine",
+    ],
+    beforeYouBegin: [
+      "Make sure the area around you is clear.",
+      "Fit the VR headset securely and comfortably.",
+      "Remain seated if the experience does not require movement.",
+      "Stop immediately if you feel dizzy or uncomfortable.",
+    ],
+    requiredEquipment: [
+      "VR Headset",
+    ],
+    vrLaunchUrl: null,
+    isActive: true,
+    sortOrder: 8,
   },
+
 ];
 
 async function main() {
-  console.log("Seeding Anandam Fitness guided workouts...");
+  console.log("Seeding Anandam Fitness workouts...");
 
   for (const workout of workouts) {
     const saved = await prisma.fitnessWorkout.upsert({
@@ -146,7 +180,7 @@ async function main() {
     console.log(`✓ ${saved.title} (${saved.youtubeVideoId})`);
   }
 
-  console.log(`Done. ${workouts.length} guided workouts are available.`);
+  console.log(`Done. ${workouts.length} fitness workouts are available.`);
 }
 
 main()

@@ -11,6 +11,8 @@ import habitRouter from './routes/habit.route';
 import workHoursRouter from './routes/workHours.route';
 import googleCalendarRoutes from './routes/googleCalendar.route';
 import fitnessRoutes from './routes/fitness.route';
+import breathingRoutes
+  from "./routes/breathing.route";
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -36,6 +38,10 @@ app.use('/api/habits', habitRouter);
 app.use('/api/work-hours', workHoursRouter);
 app.use('/api/google-calendar', googleCalendarRoutes);
 app.use('/api/fitness', fitnessRoutes);
+app.use(
+  "/api/breathing",
+  breathingRoutes
+);
 
 if (process.env.NODE_ENV !== 'production') {
   app.listen(PORT, () => {

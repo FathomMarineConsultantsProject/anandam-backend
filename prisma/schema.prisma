@@ -560,3 +560,36 @@ model FitnessChallenge {
 
   @@index([isActive, sortOrder])
 }
+
+// ======================================================
+// BREATHING BACKGROUND AUDIO
+// ======================================================
+
+model BreathingAudioTrack {
+  id   String @id @default(uuid())
+  slug String @unique
+
+  title       String
+  description String?
+
+  // YOUTUBE or AUDIO_URL
+  sourceType String
+
+  // For YouTube tracks
+  youtubeVideoId String?
+
+  // For actual MP3 / hosted audio later
+  audioUrl String?
+
+  thumbnailUrl String?
+
+  durationSeconds Int?
+
+  isActive  Boolean @default(true)
+  sortOrder Int     @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([isActive, sortOrder])
+}

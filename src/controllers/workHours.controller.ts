@@ -127,6 +127,41 @@ const addDays = (
   return result;
 };
 
+// ======================================================
+// AUTO-FINALIZE COMPLETED DAYS
+// ======================================================
+// Once a day has fully ended, any remaining UNRECORDED
+// blocks are treated as REST in API responses and summaries.
+//
+// This intentionally does NOT overwrite the stored database
+// blocks. That keeps missed-work corrections possible later
+// without changing the existing REST/MEAL conflict rules.
+// ======================================================
+
+const finalizePastDayBlocks = (
+  blocks: string[],
+  dayStart: Date,
+  now: Date = new Date()
+): string[] => {
+  const dayEnd = addDays(
+    dayStart,
+    1
+  );
+
+  // Current day or future day: keep existing values unchanged.
+  if (dayEnd > now) {
+    return [...blocks];
+  }
+
+  // Completed day: only unresolved time becomes REST.
+  return blocks.map(
+    (status) =>
+      status === "UNRECORDED"
+        ? "REST"
+        : status
+  );
+};
+
 
 // ======================================================
 // SLOT HELPERS
@@ -610,6 +645,13 @@ const buildDayResponse =
     let blocks =
       normalizeBlocks(
         record?.statusBlocks
+      );
+
+
+    blocks =
+      finalizePastDayBlocks(
+        blocks,
+        dayStart
       );
 
 
@@ -2219,10 +2261,18 @@ export const getMyWorkRestHistory =
       const data =
         records.map(
           (record) => {
-            const blocks =
+            let blocks =
               normalizeBlocks(
                 record.statusBlocks
               );
+
+
+            blocks =
+              finalizePastDayBlocks(
+                blocks,
+                record.date
+              );
+
 
             return {
               id:
@@ -3114,3 +3164,25 @@ export const deleteWorkSession =
       });
     }
   };
+
+
+
+
+  // ============Total endpoints API==================
+//   // GET     /api/work-hours/day/:date
+// PATCH   /api/work-hours/day/:date/slots
+// DELETE  /api/work-hours/day/:date/slots/:slotIndex
+
+// PATCH   /api/work-hours/day/:date/comment
+// DELETE  /api/work-hours/day/:date/comment
+
+// GET     /api/work-hours/sessions/active
+// POST    /api/work-hours/sessions/clock-in
+// POST    /api/work-hours/sessions/clock-out
+// POST    /api/work-hours/sessions/manual
+
+// PATCH   /api/work-hours/sessions/:sessionId
+// DELETE  /api/work-hours/sessions/:sessionId
+
+// GET     /api/work-hours/summary/:date
+// GET     /api/work-hours/history

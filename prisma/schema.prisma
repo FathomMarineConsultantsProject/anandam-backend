@@ -52,6 +52,8 @@ model User {
   refreshTokens            RefreshToken[]
   passwordReset            PasswordReset?
 
+  socialConnections SocialConnection[]
+
   createdAt             DateTime                @default(now())
   updatedAt             DateTime                @updatedAt
   FitnessWorkoutSession FitnessWorkoutSession[]
@@ -592,4 +594,51 @@ model BreathingAudioTrack {
   updatedAt DateTime @updatedAt
 
   @@index([isActive, sortOrder])
+}
+
+// ======================================================
+// SOCIAL ACCOUNT CONNECTIONS
+//
+// YOUTUBE / INSTAGRAM
+// ======================================================
+
+model SocialConnection {
+  id     String @id @default(uuid())
+  userId String
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // YOUTUBE / INSTAGRAM
+  provider String
+
+  // OAUTH / MANUAL
+  connectionType String @default("OAUTH")
+
+  // External account ID:
+  // YouTube Channel ID / Instagram User ID
+  providerAccountId String?
+
+  username    String?
+  displayName String?
+
+  profileUrl String?
+  avatarUrl  String?
+
+  // OAuth credentials.
+  // ALWAYS encrypted before storing.
+  accessTokenEncrypted  String?
+  refreshTokenEncrypted String?
+
+  tokenExpiresAt DateTime?
+
+  scopes String[] @default([])
+
+  isActive Boolean @default(true)
+
+  connectedAt DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // One Instagram + one YouTube account per Anandam user.
+  @@unique([userId, provider])
+  @@index([userId, isActive])
 }

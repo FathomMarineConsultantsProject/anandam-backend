@@ -39,6 +39,8 @@ const workouts = [
     isActive: true,
     sortOrder: 2,
   },
+  // yoga
+
   {
     slug: "guided-workout-sqvey0ccmse",
     type: "GUIDED",
@@ -75,6 +77,7 @@ const workouts = [
     isActive: true,
     sortOrder: 4,
   },
+  // cardio
   {
     slug: "guided-workout-s-tgqpdw9gk",
     type: "GUIDED",

@@ -300,8 +300,9 @@ model DailyWorkHours {
   // Stored as UTC midnight for the selected date
   date DateTime
 
-  // Exactly 48 half-hour slots:
-  // WORK / REST / MEAL / UNRECORDED
+  // Exactly 48 half-hour slots.
+  // Public values: WORK / REST / MEAL / UNRECORDED
+  // Internal override: MANUAL_UNRECORDED
   statusBlocks String[] @default([])
 
   // One comment for the whole day

@@ -22,6 +22,13 @@ const DIRECT_EDIT_STATUSES = [
   "UNRECORDED",
 ];
 
+// Internal-only value used for a past-day slot that the user
+// explicitly cleared. It prevents the automatic past-day REST
+// display rule from turning that slot back into REST.
+// This value is never returned to the frontend.
+const MANUAL_UNRECORDED_STATUS =
+  "MANUAL_UNRECORDED";
+
 
 // ======================================================
 // HELPERS
@@ -130,38 +137,62 @@ const addDays = (
 // ======================================================
 // AUTO-FINALIZE COMPLETED DAYS
 // ======================================================
-// Once a day has fully ended, any remaining UNRECORDED
-// blocks are treated as REST in API responses and summaries.
+// Once a day has fully ended, remaining UNRECORDED blocks
+// are shown as REST.
 //
-// This intentionally does NOT overwrite the stored database
-// blocks. That keeps missed-work corrections possible later
-// without changing the existing REST/MEAL conflict rules.
+// If a user later edits/deletes an automatic REST slot, we store
+// MANUAL_UNRECORDED internally. That specific slot then stays
+// UNRECORDED and is never auto-converted back to REST.
 // ======================================================
+
+const isCompletedDay = (
+  dayStart: Date,
+  now: Date = new Date()
+): boolean => {
+  const dayEnd = addDays(
+    dayStart,
+    1
+  );
+
+  return dayEnd <= now;
+};
+
 
 const finalizePastDayBlocks = (
   blocks: string[],
   dayStart: Date,
   now: Date = new Date()
 ): string[] => {
-  const dayEnd = addDays(
-    dayStart,
-    1
-  );
+  const completedDay =
+    isCompletedDay(
+      dayStart,
+      now
+    );
 
-  // Current day or future day: keep existing values unchanged.
-  if (dayEnd > now) {
-    return [...blocks];
-  }
-
-  // Completed day: only unresolved time becomes REST.
   return blocks.map(
-    (status) =>
-      status === "UNRECORDED"
-        ? "REST"
-        : status
+    (status) => {
+      // User explicitly cleared this historical slot.
+      // Always expose it as UNRECORDED.
+      if (
+        status ===
+        MANUAL_UNRECORDED_STATUS
+      ) {
+        return "UNRECORDED";
+      }
+
+      // Only untouched unresolved slots on a completed day
+      // are automatically treated as REST.
+      if (
+        completedDay &&
+        status === "UNRECORDED"
+      ) {
+        return "REST";
+      }
+
+      return status;
+    }
   );
 };
-
 
 // ======================================================
 // SLOT HELPERS
@@ -1054,12 +1085,23 @@ export const updateMyDaySlots =
         );
 
 
+      const completedDay =
+        isCompletedDay(
+          date
+        );
+
+
       for (
         const update of updates
       ) {
         blocks[
           update.slotIndex
-        ] = update.status;
+        ] =
+          completedDay &&
+          update.status ===
+            "UNRECORDED"
+            ? MANUAL_UNRECORDED_STATUS
+            : update.status;
       }
 
 
@@ -1194,16 +1236,9 @@ export const deleteMyDaySlot =
           },
         });
 
-      if (!existing) {
-        return res.status(404).json({
-          error:
-            "Work/rest record not found",
-        });
-      }
-
       const blocks =
         normalizeBlocks(
-          existing.statusBlocks
+          existing?.statusBlocks
         );
 
       /*
@@ -1222,9 +1257,13 @@ export const deleteMyDaySlot =
       }
 
       blocks[slotIndex] =
-        "UNRECORDED";
+        isCompletedDay(
+          date
+        )
+          ? MANUAL_UNRECORDED_STATUS
+          : "UNRECORDED";
 
-      await prisma.dailyWorkHours.update({
+      await prisma.dailyWorkHours.upsert({
         where: {
           userId_date: {
             userId,
@@ -1232,7 +1271,14 @@ export const deleteMyDaySlot =
           },
         },
 
-        data: {
+        update: {
+          statusBlocks:
+            blocks,
+        },
+
+        create: {
+          userId,
+          date,
           statusBlocks:
             blocks,
         },
@@ -1769,10 +1815,17 @@ export const createManualWorkSession =
           });
 
 
-        const blocks =
+        const rawBlocks =
           normalizeBlocks(
             existingGrid
               ?.statusBlocks
+          );
+
+
+        const blocks =
+          finalizePastDayBlocks(
+            rawBlocks,
+            gridDate
           );
 
 
@@ -2807,6 +2860,16 @@ export const updateWorkSession =
             ?.statusBlocks
         );
 
+
+      // Build the conflict view BEFORE clearing the old work range.
+      // Existing WORK is not a REST/MEAL conflict, while untouched
+      // past-day UNRECORDED slots are treated as automatic REST.
+      const conflictBlocks =
+        finalizePastDayBlocks(
+          blocks,
+          gridDate
+        );
+
       /*
         Remove the old visual work range first.
       */
@@ -2831,7 +2894,7 @@ export const updateWorkSession =
       */
       const conflicts =
         getNonWorkConflicts(
-          blocks,
+          conflictBlocks,
           newStart,
           newEnd
         );

@@ -53,6 +53,7 @@ model User {
   passwordReset            PasswordReset?
 
   socialConnections SocialConnection[]
+  blogs             Blog[]
 
   createdAt             DateTime                @default(now())
   updatedAt             DateTime                @updatedAt
@@ -642,4 +643,30 @@ model SocialConnection {
   // One Instagram + one YouTube account per Anandam user.
   @@unique([userId, provider])
   @@index([userId, isActive])
+}
+
+model Blog {
+  id       String @id @default(uuid())
+  authorId String
+
+  author User @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  title   String
+  excerpt String?
+
+  content Json
+
+  coverIllustrationKey String
+
+  visibility String @default("PRIVATE")
+
+  publicShareToken String? @unique
+
+  publishedAt DateTime @default(now())
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([authorId, updatedAt])
+  @@index([visibility, publishedAt])
 }

@@ -80,6 +80,10 @@ const generateShareToken =
 // PUBLIC FRONTEND LINK
 // ======================================================
 
+const PUBLIC_FRONTEND_URL =
+  "https://anandam-frontend-git-main-fmc-projects-projects.vercel.app";
+
+
 const buildPublicBlogUrl = (
   token:
     | string
@@ -91,29 +95,11 @@ const buildPublicBlogUrl = (
     return null;
   }
 
-
-  const frontendUrl =
-    (
-      process.env.FRONTEND_URL ||
-      "http://localhost:5173"
-    ).replace(
-      /\/+$/,
-      ""
-    );
-
-
-  /*
-    Public frontend page.
-
-    No Anandam login should be required
-    for this frontend route.
-  */
   return (
-    `${frontendUrl}` +
-    `/blog/${token}`
+    `${PUBLIC_FRONTEND_URL}` +
+    `/blog/${encodeURIComponent(token)}`
   );
 };
-
 
 // ======================================================
 // CONTENT VALIDATION
@@ -1957,3 +1943,16 @@ export const deleteBlog =
         });
     }
   };
+
+
+
+  // -====================ALL API ENDPOINTS=========================================
+//   1. POST   /api/blogs                  create PRIVATE blog
+// 2. POST   /api/blogs                  create PUBLIC blog
+// 3. GET    /api/blogs                  public feed
+// 4. GET    /api/blogs/mine             my blogs
+// 5. GET    /api/blogs/:blogId          open blog
+// 6. PATCH  /api/blogs/:blogId          edit blog
+// 7. PATCH  /api/blogs/:blogId/visibility
+// 8. GET    /api/blogs/public/:token    no-login public link
+// 9. DELETE /api/blogs/:blogId

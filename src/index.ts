@@ -13,6 +13,8 @@ import googleCalendarRoutes from './routes/googleCalendar.route';
 import fitnessRoutes from './routes/fitness.route';
 import breathingRoutes
   from "./routes/breathing.route";
+  import blogRoutes
+  from "./routes/blog.route";
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -41,6 +43,10 @@ app.use('/api/fitness', fitnessRoutes);
 app.use(
   "/api/breathing",
   breathingRoutes
+);
+app.use(
+  "/api/blogs",
+  blogRoutes
 );
 
 if (process.env.NODE_ENV !== 'production') {

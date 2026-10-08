@@ -682,8 +682,10 @@ model SleepAudioTrack {
   title       String
   description String?
 
-  // YOUTUBE now.
-  // AUDIO_URL can be used later for licensed / owned audio.
+  // SLEEP_SOUND / SLEEP_STORY
+  category String @default("SLEEP_SOUND")
+
+  // YOUTUBE / AUDIO_URL
   sourceType String @default("YOUTUBE")
 
   youtubeVideoId String? @unique
@@ -701,5 +703,6 @@ model SleepAudioTrack {
   updatedAt DateTime @updatedAt
 
   @@index([isActive, sortOrder])
+  @@index([category, isActive, sortOrder])
   @@index([frequencyHz])
 }

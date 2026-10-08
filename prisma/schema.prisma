@@ -670,3 +670,36 @@ model Blog {
   @@index([authorId, updatedAt])
   @@index([visibility, publishedAt])
 }
+
+// ======================================================
+// SLEEP AUDIO TRACKS
+// ======================================================
+
+model SleepAudioTrack {
+  id   String @id @default(uuid())
+  slug String @unique
+
+  title       String
+  description String?
+
+  // YOUTUBE now.
+  // AUDIO_URL can be used later for licensed / owned audio.
+  sourceType String @default("YOUTUBE")
+
+  youtubeVideoId String? @unique
+  sourceUrl      String?
+  audioUrl       String?
+
+  frequencyHz    Float?
+  frequencyLabel String?
+  brainwaveBand  String?
+
+  isActive  Boolean @default(true)
+  sortOrder Int     @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([isActive, sortOrder])
+  @@index([frequencyHz])
+}

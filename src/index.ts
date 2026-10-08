@@ -15,6 +15,8 @@ import breathingRoutes
   from "./routes/breathing.route";
   import blogRoutes
   from "./routes/blog.route";
+  import sleepAudioRoutes
+  from "./routes/sleepAudio.route";
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -47,6 +49,10 @@ app.use(
 app.use(
   "/api/blogs",
   blogRoutes
+);
+app.use(
+  "/api/sleep-audio",
+  sleepAudioRoutes
 );
 
 if (process.env.NODE_ENV !== 'production') {

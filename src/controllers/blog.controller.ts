@@ -81,24 +81,16 @@ const generateShareToken =
 // ======================================================
 
 const PUBLIC_FRONTEND_URL =
-  "https://anandam-frontend-git-main-fmc-projects-projects.vercel.app";
-
+  "https://anandam-frontend-nine.vercel.app";
 
 const buildPublicBlogUrl = (
-  token:
-    | string
-    | null
-    | undefined
+  token: string | null | undefined
 ): string | null => {
-
   if (!token) {
     return null;
   }
 
-  return (
-    `${PUBLIC_FRONTEND_URL}` +
-    `/blog/${encodeURIComponent(token)}`
-  );
+  return `${PUBLIC_FRONTEND_URL}/blog/${encodeURIComponent(token)}`;
 };
 
 // ======================================================

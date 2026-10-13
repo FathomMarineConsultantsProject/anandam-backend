@@ -52,8 +52,9 @@ model User {
   refreshTokens            RefreshToken[]
   passwordReset            PasswordReset?
 
-  socialConnections SocialConnection[]
-  blogs             Blog[]
+  socialConnections    SocialConnection[]
+  wellbeingSubmissions WellbeingSubmission[]
+  blogs                Blog[]
 
   createdAt             DateTime                @default(now())
   updatedAt             DateTime                @updatedAt
@@ -705,4 +706,210 @@ model SleepAudioTrack {
   @@index([isActive, sortOrder])
   @@index([category, isActive, sortOrder])
   @@index([frequencyHz])
+}
+
+// ======================================================
+// WELLBEING QUESTIONNAIRES
+// ======================================================
+
+model WellbeingQuestionnaire {
+  id       String @id @default(uuid())
+  slug     String @unique
+  category String @default("WELLBEING")
+
+  // User can fill this questionnaire again after this many days.
+  refillIntervalDays Int @default(15)
+
+  isActive Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  versions    WellbeingQuestionnaireVersion[]
+  submissions WellbeingSubmission[]
+
+  @@index([category, isActive])
+}
+
+// ======================================================
+// QUESTIONNAIRE VERSION
+//
+// Published questionnaire versions should not be edited.
+// If questions change later, create version 2, version 3, etc.
+// ======================================================
+
+model WellbeingQuestionnaireVersion {
+  id              String @id @default(uuid())
+  questionnaireId String
+
+  questionnaire WellbeingQuestionnaire @relation(fields: [questionnaireId], references: [id], onDelete: Cascade)
+
+  version Int
+
+  title       String
+  subtitle    String?
+  description String?
+
+  // DRAFT / PUBLISHED / ARCHIVED
+  status String @default("DRAFT")
+
+  publishedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  questions   WellbeingQuestion[]
+  submissions WellbeingSubmission[]
+
+  @@unique([questionnaireId, version])
+  @@index([questionnaireId, status])
+}
+
+// ======================================================
+// QUESTIONS
+// ======================================================
+
+model WellbeingQuestion {
+  id                     String @id @default(uuid())
+  questionnaireVersionId String
+
+  questionnaireVersion WellbeingQuestionnaireVersion @relation(fields: [questionnaireVersionId], references: [id], onDelete: Cascade)
+
+  // Stable identifier across questionnaire versions.
+  // Example:
+  // sleep_quality
+  // feeling_lonely
+  // feeling_stressed
+  questionKey String
+
+  questionText String
+  helperText   String?
+
+  // SINGLE_CHOICE
+  // MULTI_CHOICE
+  // SCALE
+  // TEXT
+  // BOOLEAN
+  questionType String @default("SINGLE_CHOICE")
+
+  isRequired Boolean @default(true)
+  isActive   Boolean @default(true)
+
+  sortOrder Int
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  options WellbeingQuestionOption[]
+  answers WellbeingAnswer[]
+
+  @@unique([questionnaireVersionId, questionKey])
+  @@index([questionnaireVersionId, sortOrder])
+}
+
+// ======================================================
+// QUESTION OPTIONS
+//
+// There is deliberately NO right/wrong answer.
+// ======================================================
+
+model WellbeingQuestionOption {
+  id         String @id @default(uuid())
+  questionId String
+
+  question WellbeingQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  value String
+  label String
+
+  sortOrder Int
+
+  isActive Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  selectedInAnswers WellbeingAnswerOption[]
+
+  @@unique([questionId, value])
+  @@index([questionId, sortOrder])
+}
+
+// ======================================================
+// USER QUESTIONNAIRE SUBMISSION
+//
+// Every 15-day completion becomes a NEW record.
+// Old submissions are never overwritten.
+// ======================================================
+
+model WellbeingSubmission {
+  id String @id @default(uuid())
+
+  userId                 String
+  questionnaireId        String
+  questionnaireVersionId String
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  questionnaire WellbeingQuestionnaire @relation(fields: [questionnaireId], references: [id], onDelete: Restrict)
+
+  questionnaireVersion WellbeingQuestionnaireVersion @relation(fields: [questionnaireVersionId], references: [id], onDelete: Restrict)
+
+  submittedAt    DateTime @default(now())
+  nextEligibleAt DateTime
+
+  answers WellbeingAnswer[]
+
+  createdAt DateTime @default(now())
+
+  @@index([userId, questionnaireId, submittedAt])
+  @@index([userId, nextEligibleAt])
+}
+
+// ======================================================
+// USER ANSWER
+// ======================================================
+
+model WellbeingAnswer {
+  id String @id @default(uuid())
+
+  submissionId String
+  questionId   String
+
+  submission WellbeingSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+
+  question WellbeingQuestion @relation(fields: [questionId], references: [id], onDelete: Restrict)
+
+  // Used for SCALE questions.
+  numericValue Float?
+
+  // Used for TEXT questions.
+  textValue String?
+
+  selectedOptions WellbeingAnswerOption[]
+
+  createdAt DateTime @default(now())
+
+  @@unique([submissionId, questionId])
+  @@index([questionId])
+}
+
+// ======================================================
+// SELECTED ANSWER OPTIONS
+//
+// Works for both SINGLE_CHOICE and MULTI_CHOICE.
+// ======================================================
+
+model WellbeingAnswerOption {
+  id String @id @default(uuid())
+
+  answerId String
+  optionId String
+
+  answer WellbeingAnswer @relation(fields: [answerId], references: [id], onDelete: Cascade)
+
+  option WellbeingQuestionOption @relation(fields: [optionId], references: [id], onDelete: Restrict)
+
+  @@unique([answerId, optionId])
+  @@index([optionId])
 }

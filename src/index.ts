@@ -13,10 +13,12 @@ import googleCalendarRoutes from './routes/googleCalendar.route';
 import fitnessRoutes from './routes/fitness.route';
 import breathingRoutes
   from "./routes/breathing.route";
-  import blogRoutes
+import blogRoutes
   from "./routes/blog.route";
-  import sleepAudioRoutes
+import sleepAudioRoutes
   from "./routes/sleepAudio.route";
+import wellbeingQuestionnaireRoutes
+  from "./routes/wellbeingQuestionnaire.route";
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -53,6 +55,11 @@ app.use(
 app.use(
   "/api/sleep-audio",
   sleepAudioRoutes
+);
+
+app.use(
+  "/api/wellbeing-questionnaires",
+  wellbeingQuestionnaireRoutes
 );
 
 if (process.env.NODE_ENV !== 'production') {

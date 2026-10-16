@@ -20,6 +20,19 @@ import sleepAudioRoutes
 import wellbeingQuestionnaireRoutes
   from "./routes/wellbeingQuestionnaire.route";
 
+  // marketplace
+  import marketplaceRoutes
+  from "./routes/marketplace.route";
+
+import enquiryRoutes
+  from "./routes/enquiry.route";
+
+import appointmentRoutes
+  from "./routes/appointment.route";
+
+  import practitionerRoutes
+  from "./routes/practitioner.route";
+
 const app = express();
 const PORT = process.env.PORT || 5000;
 
@@ -61,6 +74,27 @@ app.use(
   "/api/wellbeing-questionnaires",
   wellbeingQuestionnaireRoutes
 );
+// MAKRKETPLACE
+app.use(
+  "/api/marketplace",
+  marketplaceRoutes
+);
+
+app.use(
+  "/api/enquiries",
+  enquiryRoutes
+);
+
+app.use(
+  "/api/appointments",
+  appointmentRoutes
+);
+
+app.use(
+  "/api/practitioner",
+  practitionerRoutes
+);
+
 
 if (process.env.NODE_ENV !== 'production') {
   app.listen(PORT, () => {

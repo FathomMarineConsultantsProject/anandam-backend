@@ -8,12 +8,50 @@ datasource db {
   directUrl = env("DIRECT_DATABASE_URL")
 }
 
+enum UserRole {
+  USER
+  PRACTITIONER
+  SUPER_ADMIN
+}
+
+enum PractitionerApprovalStatus {
+  DRAFT
+  PENDING_REVIEW
+  APPROVED
+  REJECTED
+  SUSPENDED
+}
+
+enum MarketplaceEnquiryStatus {
+  PENDING
+  TIME_PROPOSED
+  RESCHEDULE_REQUESTED
+  CONFIRMED
+  DECLINED
+  CLOSED
+}
+
+enum SessionProposalStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  SUPERSEDED
+}
+
+enum AppointmentStatus {
+  CONFIRMED
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
 // USERS
 model User {
-  id           String @id @default(uuid())
-  email        String @unique
+  id           String   @id @default(uuid())
+  email        String   @unique
   passwordHash String
   fullName     String
+  role         UserRole @default(USER)
 
   // Maritime details
   rank          String?
@@ -56,9 +94,202 @@ model User {
   wellbeingSubmissions WellbeingSubmission[]
   blogs                Blog[]
 
+  // Marketplace
+  practitionerProfile  PractitionerProfile?
+  marketplaceEnquiries MarketplaceEnquiry[] @relation("EnquiryUser")
+  appointmentsAsUser   Appointment[]        @relation("AppointmentUser")
+
   createdAt             DateTime                @default(now())
   updatedAt             DateTime                @updatedAt
   FitnessWorkoutSession FitnessWorkoutSession[]
+}
+
+// MARKETPLACE
+model PractitionerProfile {
+  id String @id @default(uuid())
+
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  slug String @unique
+
+  // COUNSELLOR / COACH / THERAPIST /
+  // PSYCHOLOGIST / WELLNESS_PRACTITIONER
+  practitionerType String
+
+  professionalTitle String?
+
+  shortBio String?
+  about    String?
+
+  profileImageUrl String?
+
+  experienceYears Int?
+
+  languages String[] @default([])
+
+  qualificationSummary String?
+
+  sessionDurationMinutes Int @default(50)
+
+  sessionPrice Decimal @db.Decimal(10, 2)
+
+  currency String @default("INR")
+
+  acceptingNewClients Boolean @default(true)
+
+  approvalStatus PractitionerApprovalStatus @default(DRAFT)
+
+  isVisible Boolean @default(false)
+
+  approvedAt DateTime?
+
+  specialties PractitionerSpecialty[]
+
+  enquiries MarketplaceEnquiry[]
+
+  appointments Appointment[] @relation("AppointmentPractitioner")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([approvalStatus, isVisible])
+  @@index([practitionerType])
+}
+
+model Specialty {
+  id String @id @default(uuid())
+
+  slug String @unique
+
+  name String @unique
+
+  description String?
+
+  isActive Boolean @default(true)
+
+  practitioners PractitionerSpecialty[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model PractitionerSpecialty {
+  practitionerId String
+  specialtyId    String
+
+  practitioner PractitionerProfile @relation(fields: [practitionerId], references: [id], onDelete: Cascade)
+
+  specialty Specialty @relation(fields: [specialtyId], references: [id], onDelete: Cascade)
+
+  @@id([practitionerId, specialtyId])
+  @@index([specialtyId])
+}
+
+model MarketplaceEnquiry {
+  id String @id @default(uuid())
+
+  userId String
+
+  user User @relation("EnquiryUser", fields: [userId], references: [id], onDelete: Cascade)
+
+  practitionerId String
+
+  practitioner PractitionerProfile @relation(fields: [practitionerId], references: [id], onDelete: Restrict)
+
+  status MarketplaceEnquiryStatus @default(PENDING)
+
+  // What the user selected from the enquiry form
+  supportTopic String?
+
+  message String?
+
+  preferredDays String[] @default([])
+
+  preferredTimes String[] @default([])
+
+  // Example: Asia/Kolkata
+  timeZone String?
+
+  declinedReason String?
+
+  closedAt DateTime?
+
+  proposals SessionProposal[]
+
+  appointment Appointment?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, status, updatedAt])
+  @@index([practitionerId, status, updatedAt])
+}
+
+model SessionProposal {
+  id String @id @default(uuid())
+
+  enquiryId String
+
+  enquiry MarketplaceEnquiry @relation(fields: [enquiryId], references: [id], onDelete: Cascade)
+
+  proposedStart DateTime
+
+  durationMinutes Int
+
+  timeZone String
+
+  sessionType String @default("VIDEO")
+
+  practitionerMessage String?
+
+  userResponseMessage String?
+
+  status SessionProposalStatus @default(PENDING)
+
+  respondedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([enquiryId, status])
+  @@index([proposedStart])
+}
+
+model Appointment {
+  id String @id @default(uuid())
+
+  enquiryId String @unique
+
+  enquiry MarketplaceEnquiry @relation(fields: [enquiryId], references: [id], onDelete: Restrict)
+
+  userId String
+
+  user User @relation("AppointmentUser", fields: [userId], references: [id], onDelete: Restrict)
+
+  practitionerId String
+
+  practitioner PractitionerProfile @relation("AppointmentPractitioner", fields: [practitionerId], references: [id], onDelete: Restrict)
+
+  scheduledStart DateTime
+
+  scheduledEnd DateTime
+
+  timeZone String
+
+  sessionType String @default("VIDEO")
+
+  status AppointmentStatus @default(CONFIRMED)
+
+  cancelledAt DateTime?
+
+  completedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, status, scheduledStart])
+  @@index([practitionerId, status, scheduledStart])
 }
 
 // MOOD AND WELLNESS

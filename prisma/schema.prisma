@@ -45,6 +45,21 @@ enum AppointmentStatus {
   NO_SHOW
 }
 
+enum SessionProposalAuthor {
+  USER
+  PRACTITIONER
+}
+
+enum NotificationType {
+  NEW_ENQUIRY
+  ENQUIRY_ACCEPTED
+  ENQUIRY_DECLINED
+  NEW_TIME_PROPOSED
+  RESCHEDULE_REQUESTED
+  SESSION_CONFIRMED
+  PROPOSAL_DECLINED
+}
+
 // USERS
 model User {
   id           String   @id @default(uuid())
@@ -89,6 +104,7 @@ model User {
   challenges               ChallengeProgress[]
   refreshTokens            RefreshToken[]
   passwordReset            PasswordReset?
+  notifications            Notification[]
 
   socialConnections    SocialConnection[]
   wellbeingSubmissions WellbeingSubmission[]
@@ -190,26 +206,32 @@ model MarketplaceEnquiry {
   id String @id @default(uuid())
 
   userId String
-
-  user User @relation("EnquiryUser", fields: [userId], references: [id], onDelete: Cascade)
+  user   User   @relation("EnquiryUser", fields: [userId], references: [id], onDelete: Cascade)
 
   practitionerId String
-
-  practitioner PractitionerProfile @relation(fields: [practitionerId], references: [id], onDelete: Restrict)
+  practitioner   PractitionerProfile @relation(fields: [practitionerId], references: [id], onDelete: Restrict)
 
   status MarketplaceEnquiryStatus @default(PENDING)
 
-  // What the user selected from the enquiry form
   supportTopic String?
 
   message String?
 
-  preferredDays String[] @default([])
+  // ==========================================
+  // USER'S ORIGINAL REQUESTED SESSION
+  // ==========================================
 
-  preferredTimes String[] @default([])
+  requestedStart DateTime?
+  requestedEnd   DateTime?
 
-  // Example: Asia/Kolkata
   timeZone String?
+
+  preferredLanguage String?
+
+  // Keep temporarily for backwards compatibility.
+  // We can remove these after FE has moved over.
+  preferredDays  String[] @default([])
+  preferredTimes String[] @default([])
 
   declinedReason String?
 
@@ -230,8 +252,7 @@ model SessionProposal {
   id String @id @default(uuid())
 
   enquiryId String
-
-  enquiry MarketplaceEnquiry @relation(fields: [enquiryId], references: [id], onDelete: Cascade)
+  enquiry   MarketplaceEnquiry @relation(fields: [enquiryId], references: [id], onDelete: Cascade)
 
   proposedStart DateTime
 
@@ -240,6 +261,8 @@ model SessionProposal {
   timeZone String
 
   sessionType String @default("VIDEO")
+
+  proposedBy SessionProposalAuthor @default(PRACTITIONER)
 
   practitionerMessage String?
 
@@ -1143,4 +1166,29 @@ model WellbeingAnswerOption {
 
   @@unique([answerId, optionId])
   @@index([optionId])
+}
+
+model Notification {
+  id String @id @default(uuid())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  type NotificationType
+
+  title String
+
+  message String
+
+  entityType String?
+
+  entityId String?
+
+  isRead Boolean @default(false)
+
+  readAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([userId, isRead, createdAt])
 }

@@ -308,6 +308,12 @@ model Appointment {
 
   completedAt DateTime?
 
+  livekitRoomName      String?   @unique
+  callStartedAt        DateTime?
+  callEndedAt          DateTime?
+  userJoinedAt         DateTime?
+  practitionerJoinedAt DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

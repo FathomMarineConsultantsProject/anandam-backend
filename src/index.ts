@@ -57,6 +57,9 @@ import practitionerRoutes
 import notificationRoutes
   from "./routes/notification.route";
 
+  import videoCallRoutes
+  from "./routes/videoCall.route";
+
 
 const app =
   express();
@@ -200,6 +203,16 @@ app.use(
 app.use(
   "/api/notifications",
   notificationRoutes
+);
+
+// ======================================================
+// VIDEO CALLS
+// USER + PRACTITIONER
+// ======================================================
+
+app.use(
+  "/api/video",
+  videoCallRoutes
 );
 
 

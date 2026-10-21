@@ -6,8 +6,25 @@ const prisma = new PrismaClient();
 
 
 // ======================================================
+// HELPER
+// ======================================================
+
+const cleanString = (
+  value: unknown
+): string | null => {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const cleaned = value.trim();
+
+  return cleaned || null;
+};
+
+
+// ======================================================
 // CREATE ENQUIRY
-// USER -> PRACTITIONER
+// NORMAL USER -> PRACTITIONER
 // ======================================================
 
 export const createEnquiry = async (
@@ -24,33 +41,90 @@ export const createEnquiry = async (
       });
     }
 
+
     const {
       practitionerId,
       supportTopic,
       message,
-      preferredDays = [],
-      preferredTimes = [],
+      requestedStart,
+      requestedEnd,
       timeZone,
+      preferredLanguage,
     } = req.body;
 
-    if (!practitionerId) {
+
+    if (
+      !practitionerId ||
+      !requestedStart ||
+      !requestedEnd ||
+      !timeZone
+    ) {
       return res.status(400).json({
         message:
-          "Practitioner is required",
+          "Practitioner, requested start, requested end and timezone are required",
       });
     }
+
+
+    const start =
+      new Date(requestedStart);
+
+    const end =
+      new Date(requestedEnd);
+
+
+    if (
+      Number.isNaN(
+        start.getTime()
+      ) ||
+      Number.isNaN(
+        end.getTime()
+      )
+    ) {
+      return res.status(400).json({
+        message:
+          "Invalid requested session date or time",
+      });
+    }
+
+
+    if (end <= start) {
+      return res.status(400).json({
+        message:
+          "Session end time must be after the start time",
+      });
+    }
+
 
     const practitioner =
       await prisma.practitionerProfile.findFirst({
         where: {
-          id: practitionerId,
+          id: String(
+            practitionerId
+          ),
+
           approvalStatus:
             "APPROVED",
-          isVisible: true,
+
+          isVisible:
+            true,
+
           acceptingNewClients:
             true,
         },
+
+        select: {
+          id: true,
+          userId: true,
+
+          user: {
+            select: {
+              fullName: true,
+            },
+          },
+        },
       });
+
 
     if (!practitioner) {
       return res.status(404).json({
@@ -58,6 +132,7 @@ export const createEnquiry = async (
           "This practitioner is currently unavailable",
       });
     }
+
 
     if (
       practitioner.userId ===
@@ -69,53 +144,97 @@ export const createEnquiry = async (
       });
     }
 
-    const enquiry =
-      await prisma.marketplaceEnquiry.create({
-        data: {
-          userId,
-          practitionerId,
 
-          supportTopic:
-            typeof supportTopic ===
-            "string"
-              ? supportTopic.trim() ||
-                null
-              : null,
+    const sender =
+      await prisma.user.findUnique({
+        where: {
+          id: userId,
+        },
 
-          message:
-            typeof message ===
-            "string"
-              ? message.trim() ||
-                null
-              : null,
-
-          preferredDays:
-            Array.isArray(
-              preferredDays
-            )
-              ? preferredDays
-              : [],
-
-          preferredTimes:
-            Array.isArray(
-              preferredTimes
-            )
-              ? preferredTimes
-              : [],
-
-          timeZone:
-            typeof timeZone ===
-            "string"
-              ? timeZone
-              : null,
-
-          status: "PENDING",
+        select: {
+          fullName: true,
         },
       });
+
+
+    const enquiry =
+      await prisma.$transaction(
+        async (tx) => {
+          const createdEnquiry =
+            await tx.marketplaceEnquiry.create({
+              data: {
+                userId,
+
+                practitionerId:
+                  practitioner.id,
+
+                supportTopic:
+                  cleanString(
+                    supportTopic
+                  ),
+
+                message:
+                  cleanString(
+                    message
+                  ),
+
+                requestedStart:
+                  start,
+
+                requestedEnd:
+                  end,
+
+                timeZone:
+                  String(
+                    timeZone
+                  ),
+
+                preferredLanguage:
+                  cleanString(
+                    preferredLanguage
+                  ),
+
+                status:
+                  "PENDING",
+              },
+            });
+
+
+          await tx.notification.create({
+            data: {
+              userId:
+                practitioner.userId,
+
+              type:
+                "NEW_ENQUIRY",
+
+              title:
+                "New enquiry",
+
+              message:
+                `${
+                  sender?.fullName ||
+                  "A user"
+                } sent you a new session enquiry.`,
+
+              entityType:
+                "MARKETPLACE_ENQUIRY",
+
+              entityId:
+                createdEnquiry.id,
+            },
+          });
+
+
+          return createdEnquiry;
+        }
+      );
+
 
     return res.status(201).json({
       message:
         "Enquiry sent",
+
       enquiry,
     });
 
@@ -135,7 +254,7 @@ export const createEnquiry = async (
 
 // ======================================================
 // GET MY ENQUIRIES
-// USER SIDE
+// NORMAL USER ONLY
 // ======================================================
 
 export const getMyEnquiries = async (
@@ -148,10 +267,10 @@ export const getMyEnquiries = async (
 
     if (!userId) {
       return res.status(401).json({
-        message:
-          "Unauthorized",
+        message: "Unauthorized",
       });
     }
+
 
     const enquiries =
       await prisma.marketplaceEnquiry.findMany({
@@ -193,6 +312,7 @@ export const getMyEnquiries = async (
         },
       });
 
+
     return res.status(200).json({
       enquiries,
     });
@@ -225,18 +345,23 @@ export const getMyEnquiryById = async (
 
     if (!userId) {
       return res.status(401).json({
-        message:
-          "Unauthorized",
+        message: "Unauthorized",
       });
     }
 
+
     const enquiryId =
-  String(req.params.enquiryId);
+      String(
+        req.params.enquiryId
+      );
+
 
     const enquiry =
       await prisma.marketplaceEnquiry.findFirst({
         where: {
-          id: enquiryId,
+          id:
+            enquiryId,
+
           userId,
         },
 
@@ -248,6 +373,9 @@ export const getMyEnquiryById = async (
               practitionerType: true,
               professionalTitle: true,
               profileImageUrl: true,
+              sessionDurationMinutes: true,
+              sessionPrice: true,
+              currency: true,
 
               user: {
                 select: {
@@ -276,12 +404,14 @@ export const getMyEnquiryById = async (
         },
       });
 
+
     if (!enquiry) {
       return res.status(404).json({
         message:
           "Enquiry not found",
       });
     }
+
 
     return res.status(200).json({
       enquiry,
@@ -302,13 +432,16 @@ export const getMyEnquiryById = async (
 
 
 // ======================================================
-// USER REQUESTS ANOTHER TIME
+// USER PROPOSES / REQUESTS ANOTHER TIME
 //
-// TIME_PROPOSED
+// Used when:
+// 1. practitioner proposed a time and user counters
+// 2. confirmed appointment exists and user asks to reschedule
+//
 // -> RESCHEDULE_REQUESTED
 // ======================================================
 
-export const requestAnotherTime = async (
+export const proposeAnotherTime = async (
   req: AuthRequest,
   res: Response
 ) => {
@@ -318,33 +451,149 @@ export const requestAnotherTime = async (
 
     if (!userId) {
       return res.status(401).json({
-        message:
-          "Unauthorized",
+        message: "Unauthorized",
       });
     }
 
-    const enquiryId =
-  String(req.params.enquiryId);
 
-const proposalId =
-  String(req.params.proposalId);
+    const enquiryId =
+      String(
+        req.params.enquiryId
+      );
+
+    const routeProposalId =
+      req.params.proposalId
+        ? String(
+            req.params.proposalId
+          )
+        : null;
+
 
     const {
+      proposedStart,
+      proposedEnd,
+      durationMinutes,
+      timeZone,
       message,
     } = req.body;
+
+
+    if (
+      !proposedStart ||
+      !timeZone ||
+      (
+        !proposedEnd &&
+        !durationMinutes
+      )
+    ) {
+      return res.status(400).json({
+        message:
+          "Proposed start, timezone and proposed end or duration are required",
+      });
+    }
+
+
+    const start =
+      new Date(
+        proposedStart
+      );
+
+
+    if (
+      Number.isNaN(
+        start.getTime()
+      )
+    ) {
+      return res.status(400).json({
+        message:
+          "Invalid proposed start time",
+      });
+    }
+
+
+    let duration = 0;
+
+
+    if (proposedEnd) {
+      const end =
+        new Date(
+          proposedEnd
+        );
+
+      if (
+        Number.isNaN(
+          end.getTime()
+        )
+      ) {
+        return res.status(400).json({
+          message:
+            "Invalid proposed end time",
+        });
+      }
+
+      duration =
+        Math.round(
+          (
+            end.getTime() -
+            start.getTime()
+          ) /
+            60000
+        );
+    } else {
+      duration =
+        Number(
+          durationMinutes
+        );
+    }
+
+
+    if (
+      !Number.isFinite(
+        duration
+      ) ||
+      duration <= 0
+    ) {
+      return res.status(400).json({
+        message:
+          "Session duration must be greater than zero",
+      });
+    }
+
 
     const enquiry =
       await prisma.marketplaceEnquiry.findFirst({
         where: {
-          id: enquiryId,
+          id:
+            enquiryId,
+
           userId,
         },
 
         include: {
-          proposals: true,
-          appointment: true,
+          practitioner: {
+            select: {
+              id: true,
+              userId: true,
+            },
+          },
+
+          proposals: {
+            where: {
+              status:
+                "PENDING",
+            },
+
+            orderBy: {
+              createdAt:
+                "desc",
+            },
+          },
+
+          appointment:
+            true,
         },
       });
+
 
     if (!enquiry) {
       return res.status(404).json({
@@ -353,66 +602,126 @@ const proposalId =
       });
     }
 
+
     if (
-      enquiry.appointment
+      enquiry.status ===
+        "DECLINED" ||
+      enquiry.status ===
+        "CLOSED"
     ) {
       return res.status(409).json({
         message:
-          "This enquiry already has a confirmed appointment",
+          "This enquiry is closed",
       });
     }
+
+
+    const activeProposal =
+      enquiry.proposals.find(
+        (proposal) =>
+          proposal.proposedBy ===
+          "PRACTITIONER"
+      );
+
+
+    if (
+      enquiry.status ===
+        "TIME_PROPOSED" &&
+      !activeProposal
+    ) {
+      return res.status(409).json({
+        message:
+          "No active practitioner proposal was found",
+      });
+    }
+
+
+    if (
+      routeProposalId &&
+      (
+        !activeProposal ||
+        activeProposal.id !==
+          routeProposalId
+      )
+    ) {
+      return res.status(404).json({
+        message:
+          "Active practitioner proposal not found",
+      });
+    }
+
 
     if (
       enquiry.status !==
-      "TIME_PROPOSED"
+        "TIME_PROPOSED" &&
+      enquiry.status !==
+        "CONFIRMED"
     ) {
       return res.status(409).json({
         message:
-          "Another time can only be requested when a session time has been proposed",
+          "A new time cannot be proposed in the enquiry's current state",
       });
     }
 
-    const proposal =
-      enquiry.proposals.find(
-        (item) =>
-          item.id ===
-            proposalId &&
-          item.status ===
-            "PENDING"
-      );
-
-    if (!proposal) {
-      return res.status(404).json({
-        message:
-          "Active proposal not found",
-      });
-    }
 
     const result =
       await prisma.$transaction(
         async (tx) => {
 
-          const updatedProposal =
-            await tx.sessionProposal.update({
-              where: {
-                id: proposalId,
-              },
+          await tx.sessionProposal.updateMany({
+            where: {
+              enquiryId,
 
+              status:
+                "PENDING",
+            },
+
+            data: {
+              status:
+                "SUPERSEDED",
+
+              respondedAt:
+                new Date(),
+            },
+          });
+
+
+          const proposal =
+            await tx.sessionProposal.create({
               data: {
-                status:
-                  "DECLINED",
+                enquiryId,
+
+                proposedStart:
+                  start,
+
+                durationMinutes:
+                  duration,
+
+                timeZone:
+                  String(
+                    timeZone
+                  ),
+
+                sessionType:
+                  enquiry.appointment
+                    ?.sessionType ||
+                  activeProposal
+                    ?.sessionType ||
+                  "VIDEO",
+
+                proposedBy:
+                  "USER",
 
                 userResponseMessage:
-                  typeof message ===
-                  "string"
-                    ? message.trim() ||
-                      null
-                    : null,
+                  cleanString(
+                    message
+                  ),
 
-                respondedAt:
-                  new Date(),
+                status:
+                  "PENDING",
               },
             });
+
 
           const updatedEnquiry =
             await tx.marketplaceEnquiry.update({
@@ -424,43 +733,71 @@ const proposalId =
               data: {
                 status:
                   "RESCHEDULE_REQUESTED",
+
+                closedAt:
+                  null,
               },
             });
 
+
+          await tx.notification.create({
+            data: {
+              userId:
+                enquiry.practitioner.userId,
+
+              type:
+                "RESCHEDULE_REQUESTED",
+
+              title:
+                "Reschedule requested",
+
+              message:
+                "The user suggested another session time.",
+
+              entityType:
+                "MARKETPLACE_ENQUIRY",
+
+              entityId:
+                enquiryId,
+            },
+          });
+
+
           return {
-            proposal:
-              updatedProposal,
+            proposal,
             enquiry:
               updatedEnquiry,
           };
         }
       );
 
-    return res.status(200).json({
+
+    return res.status(201).json({
       message:
-        "Another time has been requested",
+        "New session time proposed",
+
       ...result,
     });
 
   } catch (error) {
     console.error(
-      "requestAnotherTime:",
+      "proposeAnotherTime:",
       error
     );
 
     return res.status(500).json({
       message:
-        "Unable to request another time",
+        "Unable to propose another time",
     });
   }
 };
 
+
 // ======================================================
-// ACCEPT PRACTITIONER PROPOSAL
+// USER ACCEPTS PRACTITIONER PROPOSAL
 //
-// TIME_PROPOSED
-// -> CONFIRMED
-// -> APPOINTMENT CREATED
+// Creates appointment if none exists.
+// Updates appointment if this was a reschedule.
 // ======================================================
 
 export const acceptProposal = async (
@@ -473,16 +810,21 @@ export const acceptProposal = async (
 
     if (!userId) {
       return res.status(401).json({
-        message:
-          "Unauthorized",
+        message: "Unauthorized",
       });
     }
 
+
     const enquiryId =
-      String(req.params.enquiryId);
+      String(
+        req.params.enquiryId
+      );
 
     const proposalId =
-      String(req.params.proposalId);
+      String(
+        req.params.proposalId
+      );
+
 
     const enquiry =
       await prisma.marketplaceEnquiry.findFirst({
@@ -494,13 +836,17 @@ export const acceptProposal = async (
         },
 
         include: {
-          proposals:
-            true,
+          practitioner: {
+            select: {
+              userId: true,
+            },
+          },
 
           appointment:
             true,
         },
       });
+
 
     if (!enquiry) {
       return res.status(404).json({
@@ -509,14 +855,31 @@ export const acceptProposal = async (
       });
     }
 
-    if (
-      enquiry.appointment
-    ) {
-      return res.status(409).json({
+
+    const proposal =
+      await prisma.sessionProposal.findFirst({
+        where: {
+          id:
+            proposalId,
+
+          enquiryId,
+
+          status:
+            "PENDING",
+
+          proposedBy:
+            "PRACTITIONER",
+        },
+      });
+
+
+    if (!proposal) {
+      return res.status(404).json({
         message:
-          "This enquiry already has a confirmed appointment",
+          "Active practitioner proposal not found",
       });
     }
+
 
     if (
       enquiry.status !==
@@ -524,25 +887,10 @@ export const acceptProposal = async (
     ) {
       return res.status(409).json({
         message:
-          "There is currently no proposed session to confirm",
+          "There is currently no practitioner proposal awaiting confirmation",
       });
     }
 
-    const proposal =
-      enquiry.proposals.find(
-        (item) =>
-          item.id ===
-            proposalId &&
-          item.status ===
-            "PENDING"
-      );
-
-    if (!proposal) {
-      return res.status(404).json({
-        message:
-          "Active proposal not found",
-      });
-    }
 
     const scheduledEnd =
       new Date(
@@ -552,9 +900,11 @@ export const acceptProposal = async (
             1000
       );
 
+
     const appointment =
       await prisma.$transaction(
         async (tx) => {
+
           await tx.sessionProposal.updateMany({
             where: {
               enquiryId,
@@ -571,8 +921,12 @@ export const acceptProposal = async (
             data: {
               status:
                 "SUPERSEDED",
+
+              respondedAt:
+                new Date(),
             },
           });
+
 
           await tx.sessionProposal.update({
             where: {
@@ -589,6 +943,7 @@ export const acceptProposal = async (
             },
           });
 
+
           await tx.marketplaceEnquiry.update({
             where: {
               id:
@@ -598,39 +953,120 @@ export const acceptProposal = async (
             data: {
               status:
                 "CONFIRMED",
+
+              closedAt:
+                null,
             },
           });
 
-          return tx.appointment.create({
-            data: {
-              enquiryId,
 
+          const savedAppointment =
+            await tx.appointment.upsert({
+              where: {
+                enquiryId,
+              },
+
+              update: {
+                scheduledStart:
+                  proposal.proposedStart,
+
+                scheduledEnd,
+
+                timeZone:
+                  proposal.timeZone,
+
+                sessionType:
+                  proposal.sessionType,
+
+                status:
+                  "CONFIRMED",
+
+                cancelledAt:
+                  null,
+              },
+
+              create: {
+                enquiryId,
+
+                userId,
+
+                practitionerId:
+                  enquiry.practitionerId,
+
+                scheduledStart:
+                  proposal.proposedStart,
+
+                scheduledEnd,
+
+                timeZone:
+                  proposal.timeZone,
+
+                sessionType:
+                  proposal.sessionType,
+
+                status:
+                  "CONFIRMED",
+              },
+            });
+
+
+          await tx.notification.create({
+            data: {
+              userId:
+                enquiry.practitioner.userId,
+
+              type:
+                "SESSION_CONFIRMED",
+
+              title:
+                "Session confirmed",
+
+              message:
+                "The user accepted the proposed session time.",
+
+              entityType:
+                "APPOINTMENT",
+
+              entityId:
+                savedAppointment.id,
+            },
+          });
+
+
+          await tx.notification.create({
+            data: {
               userId,
 
-              practitionerId:
-                enquiry.practitionerId,
+              type:
+                "SESSION_CONFIRMED",
 
-              scheduledStart:
-                proposal.proposedStart,
+              title:
+                "Session confirmed",
 
-              scheduledEnd,
+              message:
+                "Your session is confirmed.",
 
-              timeZone:
-                proposal.timeZone,
+              entityType:
+                "APPOINTMENT",
 
-              sessionType:
-                proposal.sessionType,
+              entityId:
+                savedAppointment.id,
             },
           });
+
+
+          return savedAppointment;
         }
       );
 
-    return res.status(201).json({
+
+    return res.status(200).json({
       message:
-        "Appointment confirmed",
+        "Session confirmed",
 
       appointment,
     });
+
   } catch (error) {
     console.error(
       "acceptProposal:",
@@ -639,16 +1075,18 @@ export const acceptProposal = async (
 
     return res.status(500).json({
       message:
-        "Unable to confirm appointment",
+        "Unable to confirm session",
     });
   }
 };
 
+
 // ======================================================
-// USER DECLINES PROPOSED SESSION
+// USER DECLINES PRACTITIONER PROPOSAL
 //
-// TIME_PROPOSED
-// -> CLOSED
+// Before booking -> enquiry CLOSED.
+// Existing booked session -> proposal rejected,
+// original appointment remains confirmed.
 // ======================================================
 
 export const declineProposal = async (
@@ -661,34 +1099,47 @@ export const declineProposal = async (
 
     if (!userId) {
       return res.status(401).json({
-        message:
-          "Unauthorized",
+        message: "Unauthorized",
       });
     }
 
-   const enquiryId =
-  String(req.params.enquiryId);
 
-const proposalId =
-  String(req.params.proposalId);
+    const enquiryId =
+      String(
+        req.params.enquiryId
+      );
+
+    const proposalId =
+      String(
+        req.params.proposalId
+      );
 
     const {
       message,
     } = req.body;
+
 
     const enquiry =
       await prisma.marketplaceEnquiry.findFirst({
         where: {
           id:
             enquiryId,
+
           userId,
         },
 
         include: {
-          proposals: true,
-          appointment: true,
+          practitioner: {
+            select: {
+              userId: true,
+            },
+          },
+
+          appointment:
+            true,
         },
       });
+
 
     if (!enquiry) {
       return res.status(404).json({
@@ -697,40 +1148,37 @@ const proposalId =
       });
     }
 
-    if (
-      enquiry.appointment
-    ) {
-      return res.status(409).json({
-        message:
-          "This enquiry already has a confirmed appointment",
-      });
-    }
-
-    if (
-      enquiry.status !==
-      "TIME_PROPOSED"
-    ) {
-      return res.status(409).json({
-        message:
-          "There is no active proposed session to decline",
-      });
-    }
 
     const proposal =
-      enquiry.proposals.find(
-        (item) =>
-          item.id ===
-            proposalId &&
-          item.status ===
-            "PENDING"
-      );
+      await prisma.sessionProposal.findFirst({
+        where: {
+          id:
+            proposalId,
+
+          enquiryId,
+
+          status:
+            "PENDING",
+
+          proposedBy:
+            "PRACTITIONER",
+        },
+      });
+
 
     if (!proposal) {
       return res.status(404).json({
         message:
-          "Active proposal not found",
+          "Active practitioner proposal not found",
       });
     }
+
+
+    const keepExistingAppointment =
+      Boolean(
+        enquiry.appointment
+      );
+
 
     const result =
       await prisma.$transaction(
@@ -748,16 +1196,15 @@ const proposalId =
                   "DECLINED",
 
                 userResponseMessage:
-                  typeof message ===
-                  "string"
-                    ? message.trim() ||
-                      null
-                    : null,
+                  cleanString(
+                    message
+                  ),
 
                 respondedAt:
                   new Date(),
               },
             });
+
 
           const updatedEnquiry =
             await tx.marketplaceEnquiry.update({
@@ -766,27 +1213,67 @@ const proposalId =
                   enquiryId,
               },
 
-              data: {
-                status:
-                  "CLOSED",
+              data:
+                keepExistingAppointment
+                  ? {
+                      status:
+                        "CONFIRMED",
 
-                closedAt:
-                  new Date(),
-              },
+                      closedAt:
+                        null,
+                    }
+                  : {
+                      status:
+                        "CLOSED",
+
+                      closedAt:
+                        new Date(),
+                    },
             });
+
+
+          await tx.notification.create({
+            data: {
+              userId:
+                enquiry.practitioner.userId,
+
+              type:
+                "PROPOSAL_DECLINED",
+
+              title:
+                "Session proposal declined",
+
+              message:
+                keepExistingAppointment
+                  ? "The user declined the reschedule request. The existing session remains scheduled."
+                  : "The user declined the proposed session time.",
+
+              entityType:
+                "MARKETPLACE_ENQUIRY",
+
+              entityId:
+                enquiryId,
+            },
+          });
+
 
           return {
             proposal:
               updatedProposal,
+
             enquiry:
               updatedEnquiry,
           };
         }
       );
 
+
     return res.status(200).json({
       message:
-        "Session proposal declined and enquiry closed",
+        keepExistingAppointment
+          ? "Reschedule declined. Existing appointment remains confirmed."
+          : "Session proposal declined",
+
       ...result,
     });
 

@@ -544,10 +544,16 @@ export const getVideoCallStatus = async (
 // ======================================================
 // POST /api/video/appointments/:appointmentId/end
 //
-// ENDS ROOM + MARKS APPOINTMENT COMPLETED
+// IMPORTANT:
 //
-// Either participant can end the session.
-// Later we can distinguish LEAVE vs END FOR EVERYONE.
+// - Time passing NEVER completes a session.
+// - Generating a token NEVER completes a session.
+// - The appointment must have an active LiveKit room.
+// - At least one actual participant must be connected.
+// - Only then can the video session be ended.
+//
+// Later LiveKit webhooks will give us exact
+// USER_JOINED / PRACTITIONER_JOINED tracking.
 // ======================================================
 
 export const endVideoCall = async (
@@ -594,6 +600,28 @@ export const endVideoCall = async (
 
 
     if (
+      appointment.status ===
+      "COMPLETED"
+    ) {
+      return res.status(200).json({
+        message:
+          "Session already completed",
+      });
+    }
+
+
+    if (
+      appointment.status !==
+      "CONFIRMED"
+    ) {
+      return res.status(409).json({
+        message:
+          "Only a confirmed appointment can be completed",
+      });
+    }
+
+
+    if (
       appointment.callEndedAt
     ) {
       return res.status(200).json({
@@ -603,25 +631,101 @@ export const endVideoCall = async (
     }
 
 
+    /*
+      IMPORTANT:
+
+      A room must actually have been created.
+
+      If no LiveKit room exists then nobody
+      ever entered the video session.
+    */
+
     if (
-      appointment.livekitRoomName
+      !appointment.livekitRoomName
     ) {
-      try {
-        await closeLiveKitRoom(
+      return res.status(409).json({
+        message:
+          "This video session was never started",
+      });
+    }
+
+
+    /*
+      Check LiveKit itself.
+
+      Do NOT treat scheduled time as proof
+      that a video session happened.
+    */
+
+    let participantCount =
+      0;
+
+
+    try {
+      participantCount =
+        await getLiveKitRoomParticipantCount(
           appointment.livekitRoomName
         );
+    } catch (error) {
+      console.error(
+        "Unable to verify LiveKit participants:",
+        error
+      );
 
-      } catch (error) {
-        console.error(
-          "Unable to close LiveKit room:",
-          error
-        );
-      }
+      return res.status(409).json({
+        message:
+          "Unable to verify that the video session is active",
+      });
+    }
+
+
+    /*
+      The End Session action comes from
+      inside the connected call.
+
+      Therefore at least one participant
+      must still be connected at the time
+      this endpoint is called.
+    */
+
+    if (
+      participantCount < 1
+    ) {
+      return res.status(409).json({
+        message:
+          "The video session has not been joined",
+      });
     }
 
 
     const endedAt =
       new Date();
+
+
+    /*
+      callStartedAt represents an ACTUAL
+      connected call, not token creation.
+
+      Until LiveKit webhooks are added,
+      if this is the first verified active
+      call event we store it here.
+    */
+
+    const startedAt =
+      appointment.callStartedAt ||
+      endedAt;
+
+
+    try {
+      await closeLiveKitRoom(
+        appointment.livekitRoomName
+      );
+    } catch (error) {
+      console.error(
+        "Unable to close LiveKit room:",
+        error
+      );
+    }
 
 
     const updatedAppointment =
@@ -632,6 +736,9 @@ export const endVideoCall = async (
         },
 
         data: {
+          callStartedAt:
+            startedAt,
+
           callEndedAt:
             endedAt,
 
@@ -646,7 +753,7 @@ export const endVideoCall = async (
 
     return res.status(200).json({
       message:
-        "Video session ended",
+        "Video session completed",
 
       appointment:
         updatedAppointment,

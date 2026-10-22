@@ -12,6 +12,8 @@ import {
 } from "../middleware/auth.middleware";
 
 import {
+  head,
+  del,
   issueSignedToken,
   presignUrl,
 } from "@vercel/blob";
@@ -142,76 +144,17 @@ const getBlobMetadataBySignedHead =
     access: BlobAccess;
     pathname: string;
   }) => {
-    const validUntil =
-      Date.now() +
-      2 * 60 * 1000;
+    // `head()` is OIDC-aware. Passing storeId makes it work
+    // with either the public profile store or the private
+    // practitioner-document store.
+    void access;
 
-    const signedToken =
-      await issueSignedToken({
-        storeId,
-        pathname,
-        operations: [
-          "head",
-        ],
-        validUntil,
-      });
-
-    const {
-      presignedUrl,
-    } =
-      await presignUrl(
-        signedToken,
-        {
-          access,
-          operation:
-            "head",
-          pathname,
-          validUntil,
-        }
-      );
-
-    const response =
-      await fetch(
-        presignedUrl,
-        {
-          method:
-            "HEAD",
-        }
-      );
-
-    if (!response.ok) {
-      throw new Error(
-        `Blob HEAD failed with status ${response.status}`
-      );
-    }
-
-    const size =
-      Number(
-        response.headers.get(
-          "content-length"
-        ) ||
-        "0"
-      );
-
-    const contentType =
-      String(
-        response.headers.get(
-          "content-type"
-        ) ||
-        ""
-      )
-        .split(";")[0]
-        .trim();
-
-    const url =
-      presignedUrl.split("?")[0];
-
-    return {
-      size,
-      contentType,
+    return head(
       pathname,
-      url,
-    };
+      {
+        storeId,
+      }
+    );
   };
 
 
@@ -225,51 +168,15 @@ const deleteBlobBySignedUrl =
     access: BlobAccess;
     pathname: string;
   }) => {
-    const validUntil =
-      Date.now() +
-      2 * 60 * 1000;
+    // `del()` is also OIDC-aware and accepts an explicit storeId.
+    void access;
 
-    const signedToken =
-      await issueSignedToken({
+    await del(
+      pathname,
+      {
         storeId,
-        pathname,
-        operations: [
-          "delete",
-        ],
-        validUntil,
-      });
-
-    const {
-      presignedUrl,
-    } =
-      await presignUrl(
-        signedToken,
-        {
-          access,
-          operation:
-            "delete",
-          pathname,
-          validUntil,
-        }
-      );
-
-    const response =
-      await fetch(
-        presignedUrl,
-        {
-          method:
-            "DELETE",
-        }
-      );
-
-    if (
-      !response.ok &&
-      response.status !== 404
-    ) {
-      throw new Error(
-        `Blob delete failed with status ${response.status}`
-      );
-    }
+      }
+    );
   };
 
 
@@ -1908,9 +1815,18 @@ export const confirmPractitionerUpload =
         error
       );
 
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : "Unknown upload confirmation error";
+
       return res.status(500).json({
         message:
           "Unable to confirm upload",
+        detail:
+          process.env.NODE_ENV === "production"
+            ? undefined
+            : errorMessage,
       });
     }
   };

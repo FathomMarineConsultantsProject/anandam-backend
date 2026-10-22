@@ -1055,18 +1055,22 @@ export const selectPractitionerAvatar =
 
 
       // Best effort cleanup of an old uploaded photo.
+      const profileBlobStoreId =
+        process.env
+          .PRACTITIONER_PROFILE_BLOB_STORE_ID ||
+        process.env
+          .BLOB_STORE_ID;
+
       if (
         oldPhotoPath &&
-        process.env
-          .PRACTITIONER_PROFILE_BLOB_TOKEN
+        profileBlobStoreId
       ) {
         try {
           await del(
             oldPhotoPath,
             {
-              token:
-                process.env
-                  .PRACTITIONER_PROFILE_BLOB_TOKEN,
+              storeId:
+                profileBlobStoreId,
             }
           );
         } catch (error) {
@@ -1205,7 +1209,7 @@ export const createPractitionerUploadUrl =
       let allowedContentTypes:
         string[];
 
-      let token:
+      let storeId:
         string | undefined;
 
       let folder:
@@ -1225,9 +1229,11 @@ export const createPractitionerUploadUrl =
         allowedContentTypes =
           PROFILE_CONTENT_TYPES;
 
-        token =
+        storeId =
           process.env
-            .PRACTITIONER_PROFILE_BLOB_TOKEN;
+            .PRACTITIONER_PROFILE_BLOB_STORE_ID ||
+          process.env
+            .BLOB_STORE_ID;
 
         folder =
           `practitioners/${userId}/profile`;
@@ -1245,9 +1251,9 @@ export const createPractitionerUploadUrl =
         allowedContentTypes =
           DOCUMENT_CONTENT_TYPES;
 
-        token =
+        storeId =
           process.env
-            .PRACTITIONER_DOCUMENT_BLOB_TOKEN;
+            .PRACTITIONER_DOCUMENT_STORE_ID;
 
         folder =
           `practitioners/${userId}/documents`;
@@ -1260,13 +1266,13 @@ export const createPractitionerUploadUrl =
       }
 
 
-      if (!token) {
+      if (!storeId) {
         return res.status(500).json({
           message:
             kind ===
             "PROFILE_IMAGE"
-              ? "Practitioner profile upload storage is not configured"
-              : "Practitioner document upload storage is not configured",
+              ? "Practitioner profile Blob store is not connected"
+              : "Practitioner document Blob store is not connected",
         });
       }
 
@@ -1318,7 +1324,7 @@ export const createPractitionerUploadUrl =
 
       const signedToken =
         await issueSignedToken({
-          token,
+          storeId,
 
           pathname,
 
@@ -1475,7 +1481,7 @@ export const confirmPractitionerUpload =
         "SUPPORTING_DOCUMENT";
 
 
-      let token:
+      let storeId:
         string | undefined;
 
       let expectedPrefix:
@@ -1492,9 +1498,11 @@ export const confirmPractitionerUpload =
         kind ===
         "PROFILE_IMAGE"
       ) {
-        token =
+        storeId =
           process.env
-            .PRACTITIONER_PROFILE_BLOB_TOKEN;
+            .PRACTITIONER_PROFILE_BLOB_STORE_ID ||
+          process.env
+            .BLOB_STORE_ID;
 
         expectedPrefix =
           `practitioners/${userId}/profile/`;
@@ -1509,9 +1517,9 @@ export const confirmPractitionerUpload =
         kind ===
         "DOCUMENT"
       ) {
-        token =
+        storeId =
           process.env
-            .PRACTITIONER_DOCUMENT_BLOB_TOKEN;
+            .PRACTITIONER_DOCUMENT_STORE_ID;
 
         expectedPrefix =
           `practitioners/${userId}/documents/`;
@@ -1530,10 +1538,10 @@ export const confirmPractitionerUpload =
       }
 
 
-      if (!token) {
+      if (!storeId) {
         return res.status(500).json({
           message:
-            "Upload storage is not configured",
+            "Upload Blob store is not connected",
         });
       }
 
@@ -1554,7 +1562,7 @@ export const confirmPractitionerUpload =
         await head(
           pathname,
           {
-            token,
+            storeId,
           }
         );
 
@@ -1579,7 +1587,7 @@ export const confirmPractitionerUpload =
           await del(
             pathname,
             {
-              token,
+              storeId,
             }
           );
         } catch {
@@ -1652,7 +1660,7 @@ export const confirmPractitionerUpload =
             await del(
               previousPath,
               {
-                token,
+                storeId,
               }
             );
           } catch (error) {
@@ -1797,15 +1805,15 @@ export const getPractitionerDocumentDownloadUrl =
       }
 
 
-      const token =
+      const storeId =
         process.env
-          .PRACTITIONER_DOCUMENT_BLOB_TOKEN;
+          .PRACTITIONER_DOCUMENT_STORE_ID;
 
 
-      if (!token) {
+      if (!storeId) {
         return res.status(500).json({
           message:
-            "Practitioner document storage is not configured",
+            "Practitioner document Blob store is not connected",
         });
       }
 
@@ -1817,7 +1825,7 @@ export const getPractitionerDocumentDownloadUrl =
 
       const signedToken =
         await issueSignedToken({
-          token,
+          storeId,
 
           pathname:
             document
@@ -1927,9 +1935,9 @@ export const deletePractitionerDocument =
       }
 
 
-      const token =
+      const storeId =
         process.env
-          .PRACTITIONER_DOCUMENT_BLOB_TOKEN;
+          .PRACTITIONER_DOCUMENT_STORE_ID;
 
 
       await prisma
@@ -1942,13 +1950,13 @@ export const deletePractitionerDocument =
         });
 
 
-      if (token) {
+      if (storeId) {
         try {
           await del(
             document
               .blobPathname,
             {
-              token,
+              storeId,
             }
           );
         } catch (error) {
@@ -2111,6 +2119,56 @@ export const submitPractitionerOnboarding =
       return res.status(500).json({
         message:
           "Unable to submit practitioner profile",
+      });
+    }
+  };
+
+  export const getPractitionerOnboardingSpecialties =
+  async (
+    req: AuthRequest,
+    res: Response
+  ) => {
+    try {
+      const userId =
+        req.user?.userId;
+
+      if (!userId) {
+        return res.status(401).json({
+          message: "Unauthorized",
+        });
+      }
+
+      const specialties =
+        await prisma.specialty.findMany({
+          where: {
+            isActive: true,
+          },
+
+          orderBy: {
+            name: "asc",
+          },
+
+          select: {
+            id: true,
+            slug: true,
+            name: true,
+            description: true,
+          },
+        });
+
+      return res.status(200).json({
+        specialties,
+      });
+
+    } catch (error) {
+      console.error(
+        "getPractitionerOnboardingSpecialties:",
+        error
+      );
+
+      return res.status(500).json({
+        message:
+          "Unable to load specialties",
       });
     }
   };

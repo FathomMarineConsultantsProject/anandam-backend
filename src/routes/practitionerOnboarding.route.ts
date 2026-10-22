@@ -23,6 +23,7 @@ import {
   getPractitionerDocumentDownloadUrl,
   deletePractitionerDocument,
   submitPractitionerOnboarding,
+  getPractitionerOnboardingSpecialties,
 } from "../controllers/practitionerOnboarding.controller";
 
 
@@ -143,6 +144,11 @@ router.delete(
 router.post(
   "/submit",
   submitPractitionerOnboarding
+);
+
+router.get(
+  "/specialties",
+  getPractitionerOnboardingSpecialties
 );
 
 

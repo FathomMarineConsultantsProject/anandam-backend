@@ -127,40 +127,60 @@ model PractitionerProfile {
   userId String @unique
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  // Created automatically when a PRACTITIONER account is registered.
+  // A random suffix keeps this unique even when two people share a name.
   slug String @unique
 
-  // COUNSELLOR / COACH / THERAPIST /
-  // PSYCHOLOGIST / WELLNESS_PRACTITIONER
-  practitionerType String
-
+  // All onboarding fields are intentionally optional while the profile is DRAFT.
+  practitionerType  String?
   professionalTitle String?
 
   shortBio String?
   about    String?
 
-  profileImageUrl String?
+  // City / region / country text used by the marketplace profile.
+  location String?
+
+  // If the practitioner chooses a predefined Anandam avatar,
+  // User.avatarMode + User.avatarId are used instead of these fields.
+  profileImageUrl      String?
+  profileImagePathname String?
 
   experienceYears Int?
 
   languages String[] @default([])
 
+  // Kept for backwards compatibility with the existing marketplace code.
   qualificationSummary String?
 
-  sessionDurationMinutes Int @default(50)
+  // Online presence - all optional.
+  websiteUrl   String?
+  instagramUrl String?
+  facebookUrl  String?
+  youtubeUrl   String?
 
-  sessionPrice Decimal @db.Decimal(10, 2)
-
-  currency String @default("INR")
+  // Session settings are optional while onboarding.
+  sessionDurationMinutes Int      @default(50)
+  sessionPrice           Decimal? @db.Decimal(10, 2)
+  currency               String   @default("INR")
 
   acceptingNewClients Boolean @default(true)
 
   approvalStatus PractitionerApprovalStatus @default(DRAFT)
 
+  // Never show a draft/unapproved practitioner in the USER marketplace.
   isVisible Boolean @default(false)
 
   approvedAt DateTime?
 
-  specialties PractitionerSpecialty[]
+  // Onboarding may be saved and resumed at any point.
+  onboardingStep      Int       @default(1)
+  onboardingCompleted Boolean   @default(false)
+  submittedAt         DateTime?
+
+  specialties    PractitionerSpecialty[]
+  qualifications PractitionerQualification[]
+  documents      PractitionerDocument[]
 
   enquiries MarketplaceEnquiry[]
 
@@ -171,6 +191,43 @@ model PractitionerProfile {
 
   @@index([approvalStatus, isVisible])
   @@index([practitionerType])
+}
+
+model PractitionerQualification {
+  id String @id @default(uuid())
+
+  practitionerId String
+  practitioner   PractitionerProfile @relation(fields: [practitionerId], references: [id], onDelete: Cascade)
+
+  qualificationName String?
+  institution       String?
+  year              Int?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([practitionerId])
+}
+
+model PractitionerDocument {
+  id String @id @default(uuid())
+
+  practitionerId String
+  practitioner   PractitionerProfile @relation(fields: [practitionerId], references: [id], onDelete: Cascade)
+
+  fileName     String
+  contentType  String
+  sizeBytes    Int
+  blobUrl      String
+  blobPathname String @unique
+
+  // CERTIFICATE / SUPPORTING_DOCUMENT / OTHER
+  documentType String @default("SUPPORTING_DOCUMENT")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([practitionerId, createdAt])
 }
 
 model Specialty {

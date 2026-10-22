@@ -12,8 +12,6 @@ import {
 } from "../middleware/auth.middleware";
 
 import {
-  del,
-  head,
   issueSignedToken,
   presignUrl,
 } from "@vercel/blob";
@@ -118,6 +116,161 @@ const safeFileName = (
     "upload"
   );
 };
+
+
+type BlobAccess =
+  "public" |
+  "private";
+
+
+// ======================================================
+// VERCEL BLOB HELPERS
+//
+// The project uses OIDC + multiple Blob stores.
+// issueSignedToken/presignUrl accepts storeId, so these
+// helpers work for BOTH the public profile store and the
+// private document store without exposing a static token.
+// ======================================================
+
+const getBlobMetadataBySignedHead =
+  async ({
+    storeId,
+    access,
+    pathname,
+  }: {
+    storeId: string;
+    access: BlobAccess;
+    pathname: string;
+  }) => {
+    const validUntil =
+      Date.now() +
+      2 * 60 * 1000;
+
+    const signedToken =
+      await issueSignedToken({
+        storeId,
+        pathname,
+        operations: [
+          "head",
+        ],
+        validUntil,
+      });
+
+    const {
+      presignedUrl,
+    } =
+      await presignUrl(
+        signedToken,
+        {
+          access,
+          operation:
+            "head",
+          pathname,
+          validUntil,
+        }
+      );
+
+    const response =
+      await fetch(
+        presignedUrl,
+        {
+          method:
+            "HEAD",
+        }
+      );
+
+    if (!response.ok) {
+      throw new Error(
+        `Blob HEAD failed with status ${response.status}`
+      );
+    }
+
+    const size =
+      Number(
+        response.headers.get(
+          "content-length"
+        ) ||
+        "0"
+      );
+
+    const contentType =
+      String(
+        response.headers.get(
+          "content-type"
+        ) ||
+        ""
+      )
+        .split(";")[0]
+        .trim();
+
+    const url =
+      presignedUrl.split("?")[0];
+
+    return {
+      size,
+      contentType,
+      pathname,
+      url,
+    };
+  };
+
+
+const deleteBlobBySignedUrl =
+  async ({
+    storeId,
+    access,
+    pathname,
+  }: {
+    storeId: string;
+    access: BlobAccess;
+    pathname: string;
+  }) => {
+    const validUntil =
+      Date.now() +
+      2 * 60 * 1000;
+
+    const signedToken =
+      await issueSignedToken({
+        storeId,
+        pathname,
+        operations: [
+          "delete",
+        ],
+        validUntil,
+      });
+
+    const {
+      presignedUrl,
+    } =
+      await presignUrl(
+        signedToken,
+        {
+          access,
+          operation:
+            "delete",
+          pathname,
+          validUntil,
+        }
+      );
+
+    const response =
+      await fetch(
+        presignedUrl,
+        {
+          method:
+            "DELETE",
+        }
+      );
+
+    if (
+      !response.ok &&
+      response.status !== 404
+    ) {
+      throw new Error(
+        `Blob delete failed with status ${response.status}`
+      );
+    }
+  };
 
 
 const makeSlug = (
@@ -1066,13 +1219,14 @@ export const selectPractitionerAvatar =
         profileBlobStoreId
       ) {
         try {
-          await del(
-            oldPhotoPath,
-            {
-              storeId:
-                profileBlobStoreId,
-            }
-          );
+          await deleteBlobBySignedUrl({
+            storeId:
+              profileBlobStoreId,
+            access:
+              "public",
+            pathname:
+              oldPhotoPath,
+          });
         } catch (error) {
           console.error(
             "Old practitioner photo cleanup failed:",
@@ -1484,6 +1638,9 @@ export const confirmPractitionerUpload =
       let storeId:
         string | undefined;
 
+      let access:
+        BlobAccess;
+
       let expectedPrefix:
         string;
 
@@ -1504,6 +1661,9 @@ export const confirmPractitionerUpload =
           process.env
             .BLOB_STORE_ID;
 
+        access =
+          "public";
+
         expectedPrefix =
           `practitioners/${userId}/profile/`;
 
@@ -1520,6 +1680,9 @@ export const confirmPractitionerUpload =
         storeId =
           process.env
             .PRACTITIONER_DOCUMENT_STORE_ID;
+
+        access =
+          "private";
 
         expectedPrefix =
           `practitioners/${userId}/documents/`;
@@ -1559,12 +1722,11 @@ export const confirmPractitionerUpload =
 
 
       const metadata =
-        await head(
+        await getBlobMetadataBySignedHead({
+          storeId,
+          access,
           pathname,
-          {
-            storeId,
-          }
-        );
+        });
 
 
       const validSize =
@@ -1584,12 +1746,11 @@ export const confirmPractitionerUpload =
         !validType
       ) {
         try {
-          await del(
+          await deleteBlobBySignedUrl({
+            storeId,
+            access,
             pathname,
-            {
-              storeId,
-            }
-          );
+          });
         } catch {
           // Ignore cleanup error.
         }
@@ -1657,12 +1818,13 @@ export const confirmPractitionerUpload =
             metadata.pathname
         ) {
           try {
-            await del(
-              previousPath,
-              {
-                storeId,
-              }
-            );
+            await deleteBlobBySignedUrl({
+              storeId,
+              access:
+                "public",
+              pathname:
+                previousPath,
+            });
           } catch (error) {
             console.error(
               "Old profile photo cleanup failed:",
@@ -1952,13 +2114,14 @@ export const deletePractitionerDocument =
 
       if (storeId) {
         try {
-          await del(
-            document
-              .blobPathname,
-            {
-              storeId,
-            }
-          );
+          await deleteBlobBySignedUrl({
+            storeId,
+            access:
+              "private",
+            pathname:
+              document
+                .blobPathname,
+          });
         } catch (error) {
           console.error(
             "Blob document cleanup failed:",

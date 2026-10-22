@@ -14,6 +14,7 @@ import {
 
 import {
   PrismaClient,
+  UserRole,
 } from "@prisma/client";
 
 import {
@@ -155,20 +156,110 @@ const createAuthSession = async (
 
 // ======================================================
 // REGISTER USER
+//
+// Existing USER registration remains the default.
+// Send accountType: "PRACTITIONER" to create a practitioner account.
+//
+// SUPER_ADMIN can NEVER self-register through this endpoint.
 // ======================================================
+
+const makePractitionerSlug = (
+  fullName: string
+) => {
+  const base =
+    fullName
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "") ||
+    "practitioner";
+
+  const suffix =
+    randomBytes(4).toString("hex");
+
+  return `${base}-${suffix}`;
+};
+
 
 export const registerUser = async (
   req: Request,
   res: Response
 ): Promise<any> => {
   try {
-    const {
-      email,
-      password,
-      fullName,
-      rank,
-      vessel,
-    } = req.body;
+    const email =
+      String(
+        req.body.email || ""
+      )
+        .trim()
+        .toLowerCase();
+
+    const password =
+      String(
+        req.body.password || ""
+      );
+
+    const fullName =
+      String(
+        req.body.fullName || ""
+      ).trim();
+
+    const rank =
+      req.body.rank
+        ? String(req.body.rank).trim()
+        : null;
+
+    const vessel =
+      req.body.vessel
+        ? String(req.body.vessel).trim()
+        : null;
+
+    const requestedAccountType =
+      String(
+        req.body.accountType ||
+        req.body.role ||
+        "USER"
+      )
+        .trim()
+        .toUpperCase();
+
+
+    if (
+      !email ||
+      !password ||
+      !fullName
+    ) {
+      return res.status(400).json({
+        error:
+          "Full name, email and password are required",
+      });
+    }
+
+
+    if (
+      password.length < 8
+    ) {
+      return res.status(400).json({
+        error:
+          "Password must contain at least 8 characters",
+      });
+    }
+
+
+    if (
+      requestedAccountType !==
+        UserRole.USER &&
+      requestedAccountType !==
+        UserRole.PRACTITIONER
+    ) {
+      return res.status(400).json({
+        error:
+          "Invalid account type",
+      });
+    }
+
+
+    const role =
+      requestedAccountType as UserRole;
 
 
     const existingUser =
@@ -199,15 +290,65 @@ export const registerUser = async (
 
 
     const newUser =
-      await prisma.user.create({
-        data: {
-          email,
-          passwordHash,
-          fullName,
-          rank,
-          vessel,
-        },
-      });
+      await prisma.$transaction(
+        async (tx) => {
+          const user =
+            await tx.user.create({
+              data: {
+                email,
+                passwordHash,
+                fullName,
+                role,
+
+                // Preserve your existing normal-user registration fields.
+                rank:
+                  role === UserRole.USER
+                    ? rank
+                    : null,
+
+                vessel:
+                  role === UserRole.USER
+                    ? vessel
+                    : null,
+              },
+            });
+
+
+          if (
+            role ===
+            UserRole.PRACTITIONER
+          ) {
+            await tx.practitionerProfile.create({
+              data: {
+                userId:
+                  user.id,
+
+                slug:
+                  makePractitionerSlug(
+                    fullName
+                  ),
+
+                // Draft profile. Nothing except the User's
+                // fullName/email/password was required.
+                approvalStatus:
+                  "DRAFT",
+
+                isVisible:
+                  false,
+
+                onboardingStep:
+                  1,
+
+                onboardingCompleted:
+                  false,
+              },
+            });
+          }
+
+
+          return user;
+        }
+      );
 
 
     const {
@@ -220,7 +361,8 @@ export const registerUser = async (
 
 
     return res.status(201).json({
-      status: "success",
+      status:
+        "success",
 
       accessToken,
       refreshToken,
@@ -234,10 +376,36 @@ export const registerUser = async (
       sessionExpiresAt,
 
       user: {
-        id: newUser.id,
-        email: newUser.email,
-        fullName: newUser.fullName,
+        id:
+          newUser.id,
+
+        email:
+          newUser.email,
+
+        fullName:
+          newUser.fullName,
+
+        role:
+          newUser.role,
       },
+
+      practitionerOnboarding:
+        newUser.role ===
+        UserRole.PRACTITIONER
+          ? {
+              required:
+                true,
+
+              completed:
+                false,
+
+              approvalStatus:
+                "DRAFT",
+
+              nextStep:
+                1,
+            }
+          : null,
     });
 
   } catch (error) {
@@ -264,13 +432,23 @@ export const loginUser = async (
   res: Response
 ): Promise<any> => {
   try {
-    const {
-      email,
-      password,
-    } = req.body;
+    const email =
+      String(
+        req.body.email || ""
+      )
+        .trim()
+        .toLowerCase();
+
+    const password =
+      String(
+        req.body.password || ""
+      );
 
 
-    if (!email || !password) {
+    if (
+      !email ||
+      !password
+    ) {
       return res.status(400).json({
         error:
           "Email and password are required",
@@ -282,6 +460,18 @@ export const loginUser = async (
       await prisma.user.findUnique({
         where: {
           email,
+        },
+
+        include: {
+          practitionerProfile: {
+            select: {
+              id: true,
+              onboardingStep: true,
+              onboardingCompleted: true,
+              approvalStatus: true,
+              isVisible: true,
+            },
+          },
         },
       });
 
@@ -318,16 +508,17 @@ export const loginUser = async (
     );
 
 
+    const isPractitioner =
+      user.role ===
+      UserRole.PRACTITIONER;
+
+
     return res.status(200).json({
-      status: "success",
+      status:
+        "success",
 
       accessToken,
       refreshToken,
-
-      /*
-        Frontend now knows exactly how long
-        the access token remains valid.
-      */
 
       accessTokenExpiresInSeconds:
         ACCESS_TOKEN_EXPIRES_SECONDS,
@@ -338,10 +529,52 @@ export const loginUser = async (
       sessionExpiresAt,
 
       user: {
-        id: user.id,
-        email: user.email,
-        fullName: user.fullName,
+        id:
+          user.id,
+
+        email:
+          user.email,
+
+        fullName:
+          user.fullName,
+
+        role:
+          user.role,
       },
+
+      practitionerOnboarding:
+        isPractitioner
+          ? {
+              required:
+                !user
+                  .practitionerProfile
+                  ?.onboardingCompleted,
+
+              completed:
+                user
+                  .practitionerProfile
+                  ?.onboardingCompleted ??
+                false,
+
+              approvalStatus:
+                user
+                  .practitionerProfile
+                  ?.approvalStatus ??
+                "DRAFT",
+
+              nextStep:
+                user
+                  .practitionerProfile
+                  ?.onboardingStep ??
+                1,
+
+              profileId:
+                user
+                  .practitionerProfile
+                  ?.id ??
+                null,
+            }
+          : null,
     });
 
   } catch (error) {

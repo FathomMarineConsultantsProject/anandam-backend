@@ -54,10 +54,13 @@ import appointmentRoutes
 import practitionerRoutes
   from "./routes/practitioner.route";
 
+import practitionerOnboardingRoutes
+  from "./routes/practitionerOnboarding.route";
+
 import notificationRoutes
   from "./routes/notification.route";
 
-  import videoCallRoutes
+import videoCallRoutes
   from "./routes/videoCall.route";
 
 
@@ -190,11 +193,19 @@ app.use(
 );
 
 
-// Practitioner-only marketplace area
+// Existing practitioner-only enquiry/session area
 
 app.use(
   "/api/practitioner",
   practitionerRoutes
+);
+
+
+// Practitioner registration onboarding / editable profile
+
+app.use(
+  "/api/practitioner-onboarding",
+  practitionerOnboardingRoutes
 );
 
 
@@ -204,6 +215,7 @@ app.use(
   "/api/notifications",
   notificationRoutes
 );
+
 
 // ======================================================
 // VIDEO CALLS

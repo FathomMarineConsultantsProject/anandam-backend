@@ -35,8 +35,16 @@ export const getPractitioners = async (
 
     const where: any = {
       approvalStatus: "APPROVED",
+
       isVisible: true,
+
+      onboardingCompleted: true,
+
       acceptingNewClients: true,
+
+      user: {
+        role: "PRACTITIONER",
+      },
     };
 
     if (type) {
@@ -140,15 +148,24 @@ export const getPractitioners = async (
         select: {
           id: true,
           slug: true,
+
           practitionerType: true,
           professionalTitle: true,
+
           shortBio: true,
+          about: true,
+
+          location: true,
+
           profileImageUrl: true,
+
           experienceYears: true,
           languages: true,
+
           sessionDurationMinutes: true,
           sessionPrice: true,
           currency: true,
+
           acceptingNewClients: true,
 
           user: {
@@ -219,25 +236,39 @@ export const getPractitionerBySlug = async (
       await prisma.practitionerProfile.findFirst({
         where: {
           slug,
-          approvalStatus:
-            "APPROVED",
+
+          approvalStatus: "APPROVED",
+
           isVisible: true,
+
+          onboardingCompleted: true,
+
+          user: {
+            role: "PRACTITIONER",
+          },
         },
 
         select: {
           id: true,
           slug: true,
+
           practitionerType: true,
           professionalTitle: true,
+
           shortBio: true,
           about: true,
+
+          location: true,
+
           profileImageUrl: true,
+
           experienceYears: true,
           languages: true,
-          qualificationSummary: true,
+
           sessionDurationMinutes: true,
           sessionPrice: true,
           currency: true,
+
           acceptingNewClients: true,
 
           user: {

@@ -4,6 +4,7 @@ import {
   createVideoCallToken,
   endVideoCall,
   getVideoCallStatus,
+  markVideoCallConnected,
 } from "../controllers/videoCall.controller";
 
 import {
@@ -52,6 +53,14 @@ router.post(
   createVideoCallToken
 );
 
+// ======================================================
+// MARK ACTUAL LIVEKIT CONNECTION
+// ======================================================
+
+router.post(
+  "/appointments/:appointmentId/connected",
+  markVideoCallConnected
+);
 
 // ======================================================
 // END SESSION

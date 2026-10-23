@@ -99,19 +99,27 @@ export const createEnquiry = async (
     const practitioner =
       await prisma.practitionerProfile.findFirst({
         where: {
-          id: String(
-            practitionerId
-          ),
+  id: String(
+    practitionerId
+  ),
 
-          approvalStatus:
-            "APPROVED",
+  approvalStatus:
+    "APPROVED",
 
-          isVisible:
-            true,
+  onboardingCompleted:
+    true,
 
-          acceptingNewClients:
-            true,
-        },
+  isVisible:
+    true,
+
+  acceptingNewClients:
+    true,
+
+  user: {
+    role:
+      "PRACTITIONER",
+  },
+},
 
         select: {
           id: true,
@@ -212,9 +220,8 @@ export const createEnquiry = async (
                 "New enquiry",
 
               message:
-                `${
-                  sender?.fullName ||
-                  "A user"
+                `${sender?.fullName ||
+                "A user"
                 } sent you a new session enquiry.`,
 
               entityType:
@@ -288,9 +295,17 @@ export const getMyEnquiries = async (
             select: {
               id: true,
               slug: true,
+
               practitionerType: true,
               professionalTitle: true,
+
               profileImageUrl: true,
+
+              location: true,
+
+              sessionDurationMinutes: true,
+              sessionPrice: true,
+              currency: true,
 
               user: {
                 select: {
@@ -464,8 +479,8 @@ export const proposeAnotherTime = async (
     const routeProposalId =
       req.params.proposalId
         ? String(
-            req.params.proposalId
-          )
+          req.params.proposalId
+        )
         : null;
 
 
@@ -537,7 +552,7 @@ export const proposeAnotherTime = async (
             end.getTime() -
             start.getTime()
           ) /
-            60000
+          60000
         );
     } else {
       duration =
@@ -605,9 +620,9 @@ export const proposeAnotherTime = async (
 
     if (
       enquiry.status ===
-        "DECLINED" ||
+      "DECLINED" ||
       enquiry.status ===
-        "CLOSED"
+      "CLOSED"
     ) {
       return res.status(409).json({
         message:
@@ -626,7 +641,7 @@ export const proposeAnotherTime = async (
 
     if (
       enquiry.status ===
-        "TIME_PROPOSED" &&
+      "TIME_PROPOSED" &&
       !activeProposal
     ) {
       return res.status(409).json({
@@ -641,7 +656,7 @@ export const proposeAnotherTime = async (
       (
         !activeProposal ||
         activeProposal.id !==
-          routeProposalId
+        routeProposalId
       )
     ) {
       return res.status(404).json({
@@ -653,9 +668,9 @@ export const proposeAnotherTime = async (
 
     if (
       enquiry.status !==
-        "TIME_PROPOSED" &&
+      "TIME_PROPOSED" &&
       enquiry.status !==
-        "CONFIRMED"
+      "CONFIRMED"
     ) {
       return res.status(409).json({
         message:
@@ -895,9 +910,9 @@ export const acceptProposal = async (
     const scheduledEnd =
       new Date(
         proposal.proposedStart.getTime() +
-          proposal.durationMinutes *
-            60 *
-            1000
+        proposal.durationMinutes *
+        60 *
+        1000
       );
 
 
@@ -1216,19 +1231,19 @@ export const declineProposal = async (
               data:
                 keepExistingAppointment
                   ? {
-                      status:
-                        "CONFIRMED",
+                    status:
+                      "CONFIRMED",
 
-                      closedAt:
-                        null,
-                    }
+                    closedAt:
+                      null,
+                  }
                   : {
-                      status:
-                        "CLOSED",
+                    status:
+                      "CLOSED",
 
-                      closedAt:
-                        new Date(),
-                    },
+                    closedAt:
+                      new Date(),
+                  },
             });
 
 

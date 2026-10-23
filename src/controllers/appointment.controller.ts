@@ -40,9 +40,17 @@ export const getMyAppointments = async (
             select: {
               id: true,
               slug: true,
+
               professionalTitle: true,
               practitionerType: true,
+
               profileImageUrl: true,
+
+              location: true,
+
+              sessionDurationMinutes: true,
+              sessionPrice: true,
+              currency: true,
 
               user: {
                 select: {
@@ -99,7 +107,7 @@ export const getMyAppointmentById = async (
     }
 
     const appointmentId =
-  String(req.params.appointmentId);
+      String(req.params.appointmentId);
 
     const appointment =
       await prisma.appointment.findFirst({
@@ -115,9 +123,17 @@ export const getMyAppointmentById = async (
             select: {
               id: true,
               slug: true,
+
               professionalTitle: true,
               practitionerType: true,
+
               profileImageUrl: true,
+
+              location: true,
+
+              sessionDurationMinutes: true,
+              sessionPrice: true,
+              currency: true,
 
               user: {
                 select: {

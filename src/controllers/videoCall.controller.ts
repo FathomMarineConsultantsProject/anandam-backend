@@ -188,15 +188,15 @@ export const createVideoCallToken = async (
     const joinOpensAt =
       appointment.scheduledStart.getTime() -
       JOIN_EARLY_MINUTES *
-        60 *
-        1000;
+      60 *
+      1000;
 
 
     const joinClosesAt =
       appointment.scheduledEnd.getTime() +
       JOIN_LATE_MINUTES *
-        60 *
-        1000;
+      60 *
+      1000;
 
 
     if (
@@ -256,20 +256,20 @@ export const createVideoCallToken = async (
 
     const participantName =
       participantRole ===
-      "PRACTITIONER"
+        "PRACTITIONER"
         ? (
-            appointment
-              .practitioner
-              .user
-              .fullName ||
-            "Practitioner"
-          )
+          appointment
+            .practitioner
+            .user
+            .fullName ||
+          "Practitioner"
+        )
         : (
-            appointment
-              .user
-              .fullName ||
-            "User"
-          );
+          appointment
+            .user
+            .fullName ||
+          "User"
+        );
 
 
     const token =
@@ -283,32 +283,6 @@ export const createVideoCallToken = async (
         role:
           participantRole,
       });
-
-
-    /*
-      We treat the first successful token
-      request inside the join window as the
-      beginning of the call session.
-
-      Later we can make this more exact
-      with LiveKit webhooks.
-    */
-
-    if (
-      !appointment.callStartedAt
-    ) {
-      await prisma.appointment.update({
-        where: {
-          id:
-            appointment.id,
-        },
-
-        data: {
-          callStartedAt:
-            new Date(),
-        },
-      });
-    }
 
 
     return res.status(200).json({
@@ -366,6 +340,203 @@ export const createVideoCallToken = async (
 
 
 // ======================================================
+// POST /api/video/appointments/:appointmentId/connected
+//
+// Called by FE ONLY after LiveKit reports
+// that the participant is actually connected.
+//
+// USER:
+// - sets userJoinedAt
+//
+// PRACTITIONER:
+// - sets practitionerJoinedAt
+//
+// First real connection:
+// - sets callStartedAt
+// ======================================================
+
+export const markVideoCallConnected =
+  async (
+    req: AuthRequest,
+    res: Response
+  ) => {
+    try {
+      const userId =
+        req.user?.userId;
+
+
+      if (!userId) {
+        return res.status(401).json({
+          message:
+            "Unauthorized",
+        });
+      }
+
+
+      const appointmentId =
+        String(
+          req.params.appointmentId
+        );
+
+
+      const authorized =
+        await getAuthorizedAppointment(
+          appointmentId,
+          userId
+        );
+
+
+      if (!authorized) {
+        return res.status(404).json({
+          message:
+            "Appointment not found",
+        });
+      }
+
+
+      const {
+        appointment,
+        participantRole,
+      } = authorized;
+
+
+      if (
+        appointment.status !==
+        "CONFIRMED"
+      ) {
+        return res.status(409).json({
+          message:
+            "Only confirmed appointments can start a video session",
+        });
+      }
+
+
+      if (
+        appointment.callEndedAt
+      ) {
+        return res.status(409).json({
+          message:
+            "This video session has already ended",
+        });
+      }
+
+
+      if (
+        !appointment.livekitRoomName
+      ) {
+        return res.status(409).json({
+          message:
+            "Video room has not been created yet",
+        });
+      }
+
+
+      const now =
+        new Date();
+
+
+      const updateData:
+        {
+          callStartedAt?:
+          Date;
+
+          userJoinedAt?:
+          Date;
+
+          practitionerJoinedAt?:
+          Date;
+        } = {};
+
+
+      if (
+        !appointment.callStartedAt
+      ) {
+        updateData.callStartedAt =
+          now;
+      }
+
+
+      if (
+        participantRole ===
+        "USER" &&
+        !appointment.userJoinedAt
+      ) {
+        updateData.userJoinedAt =
+          now;
+      }
+
+
+      if (
+        participantRole ===
+        "PRACTITIONER" &&
+        !appointment.practitionerJoinedAt
+      ) {
+        updateData.practitionerJoinedAt =
+          now;
+      }
+
+
+      const updatedAppointment =
+        Object.keys(
+          updateData
+        ).length > 0
+          ? await prisma.appointment.update({
+            where: {
+              id:
+                appointment.id,
+            },
+
+            data:
+              updateData,
+          })
+          : appointment;
+
+
+      return res.status(200).json({
+        message:
+          "Video participant connected",
+
+        participant: {
+          userId,
+
+          role:
+            participantRole,
+        },
+
+        appointment: {
+          id:
+            updatedAppointment.id,
+
+          callStartedAt:
+            updatedAppointment.callStartedAt,
+
+          userJoinedAt:
+            updatedAppointment.userJoinedAt,
+
+          practitionerJoinedAt:
+            updatedAppointment.practitionerJoinedAt,
+
+          callEndedAt:
+            updatedAppointment.callEndedAt,
+        },
+      });
+
+    } catch (error) {
+      console.error(
+        "markVideoCallConnected:",
+        error
+      );
+
+
+      return res.status(500).json({
+        message:
+          "Unable to mark video participant as connected",
+      });
+    }
+  };
+
+
+// ======================================================
 // GET /api/video/appointments/:appointmentId/status
 // ======================================================
 
@@ -419,15 +590,15 @@ export const getVideoCallStatus = async (
     const joinOpensAt =
       appointment.scheduledStart.getTime() -
       JOIN_EARLY_MINUTES *
-        60 *
-        1000;
+      60 *
+      1000;
 
 
     const joinClosesAt =
       appointment.scheduledEnd.getTime() +
       JOIN_LATE_MINUTES *
-        60 *
-        1000;
+      60 *
+      1000;
 
 
     let callStatus:
@@ -440,7 +611,7 @@ export const getVideoCallStatus = async (
     if (
       appointment.callEndedAt ||
       appointment.status ===
-        "COMPLETED"
+      "COMPLETED"
     ) {
       callStatus =
         "ENDED";
@@ -496,11 +667,11 @@ export const getVideoCallStatus = async (
 
       joinAllowed:
         appointment.status ===
-          "CONFIRMED" &&
+        "CONFIRMED" &&
         now >=
-          joinOpensAt &&
+        joinOpensAt &&
         now <=
-          joinClosesAt &&
+        joinClosesAt &&
         !appointment.callEndedAt,
 
       joinOpensAt:
@@ -515,6 +686,12 @@ export const getVideoCallStatus = async (
 
       callStartedAt:
         appointment.callStartedAt,
+
+      userJoinedAt:
+        appointment.userJoinedAt,
+
+      practitionerJoinedAt:
+        appointment.practitionerJoinedAt,
 
       callEndedAt:
         appointment.callEndedAt,

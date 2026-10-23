@@ -263,11 +263,14 @@ export const registerUser = async (
 
 
     const existingUser =
-      await prisma.user.findUnique({
-        where: {
-          email,
-        },
-      });
+  await prisma.user.findFirst({
+    where: {
+      email: {
+        equals: email,
+        mode: "insensitive",
+      },
+    },
+  });
 
 
     if (existingUser) {
@@ -457,23 +460,26 @@ export const loginUser = async (
 
 
     const user =
-      await prisma.user.findUnique({
-        where: {
-          email,
-        },
+  await prisma.user.findFirst({
+    where: {
+      email: {
+        equals: email,
+        mode: "insensitive",
+      },
+    },
 
-        include: {
-          practitionerProfile: {
-            select: {
-              id: true,
-              onboardingStep: true,
-              onboardingCompleted: true,
-              approvalStatus: true,
-              isVisible: true,
-            },
-          },
+    include: {
+      practitionerProfile: {
+        select: {
+          id: true,
+          onboardingStep: true,
+          onboardingCompleted: true,
+          approvalStatus: true,
+          isVisible: true,
         },
-      });
+      },
+    },
+  });
 
 
     if (!user) {

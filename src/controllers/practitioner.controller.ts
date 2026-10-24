@@ -144,7 +144,7 @@ export const getPractitionerEnquiries = async (
 
     const status =
       typeof req.query.status ===
-      "string"
+        "string"
         ? req.query.status
         : undefined;
 
@@ -176,9 +176,9 @@ export const getPractitionerEnquiries = async (
 
           ...(status
             ? {
-                status:
-                  status as MarketplaceEnquiryStatus,
-              }
+              status:
+                status as MarketplaceEnquiryStatus,
+            }
             : {}),
         },
 
@@ -459,6 +459,12 @@ export const acceptEnquiry = async (
                 sessionType:
                   "VIDEO",
 
+                sessionFee:
+                  practitioner.sessionPrice,
+
+                currency:
+                  practitioner.currency || "INR",
+
                 status:
                   "CONFIRMED",
               },
@@ -588,6 +594,8 @@ export const proposeSessionTime = async (
       durationMinutes,
       timeZone,
       sessionType = "VIDEO",
+      sessionFee,
+      currency,
       message,
     } = req.body;
 
@@ -651,7 +659,7 @@ export const proposeSessionTime = async (
             end.getTime() -
             start.getTime()
           ) /
-            60000
+          60000
         );
     } else {
       duration =
@@ -673,6 +681,35 @@ export const proposeSessionTime = async (
       });
     }
 
+    const normalizedFee =
+      sessionFee === null ||
+        sessionFee === undefined ||
+        sessionFee === ""
+        ? practitioner.sessionPrice
+        : Number(sessionFee);
+
+    if (
+      normalizedFee !== null &&
+      normalizedFee !== undefined &&
+      (
+        !Number.isFinite(Number(normalizedFee)) ||
+        Number(normalizedFee) < 0
+      )
+    ) {
+      return res.status(400).json({
+        message:
+          "Session fee must be a valid positive amount",
+      });
+    }
+
+    const normalizedCurrency =
+      String(
+        currency ||
+        practitioner.currency ||
+        "INR"
+      )
+        .trim()
+        .toUpperCase();
 
     const enquiry =
       await prisma.marketplaceEnquiry.findFirst({
@@ -708,9 +745,9 @@ export const proposeSessionTime = async (
 
     if (
       enquiry.status ===
-        "DECLINED" ||
+      "DECLINED" ||
       enquiry.status ===
-        "CLOSED"
+      "CLOSED"
     ) {
       return res.status(409).json({
         message:
@@ -780,6 +817,14 @@ export const proposeSessionTime = async (
                   String(
                     sessionType
                   ),
+                sessionFee:
+                  normalizedFee === null ||
+                    normalizedFee === undefined
+                    ? null
+                    : Number(normalizedFee),
+
+                currency:
+                  normalizedCurrency,
 
                 proposedBy:
                   "PRACTITIONER",
@@ -975,9 +1020,9 @@ export const acceptUserProposal = async (
     const scheduledEnd =
       new Date(
         proposal.proposedStart.getTime() +
-          proposal.durationMinutes *
-            60 *
-            1000
+        proposal.durationMinutes *
+        60 *
+        1000
       );
 
 
@@ -1058,6 +1103,12 @@ export const acceptUserProposal = async (
                 sessionType:
                   proposal.sessionType,
 
+                sessionFee:
+                  proposal.sessionFee,
+
+                currency:
+                  proposal.currency,
+
                 status:
                   "CONFIRMED",
 
@@ -1084,6 +1135,12 @@ export const acceptUserProposal = async (
 
                 sessionType:
                   proposal.sessionType,
+
+                sessionFee:
+                  proposal.sessionFee,
+
+                currency:
+                  proposal.currency,
 
                 status:
                   "CONFIRMED",
@@ -1304,24 +1361,24 @@ export const declineUserProposal = async (
               data:
                 keepExistingAppointment
                   ? {
-                      status:
-                        "CONFIRMED",
+                    status:
+                      "CONFIRMED",
 
-                      closedAt:
-                        null,
-                    }
+                    closedAt:
+                      null,
+                  }
                   : {
-                      status:
-                        "DECLINED",
+                    status:
+                      "DECLINED",
 
-                      declinedReason:
-                        cleanString(
-                          reason
-                        ),
+                    declinedReason:
+                      cleanString(
+                        reason
+                      ),
 
-                      closedAt:
-                        new Date(),
-                    },
+                    closedAt:
+                      new Date(),
+                  },
             });
 
 
@@ -1466,11 +1523,11 @@ export const declineEnquiry = async (
 
     if (
       enquiry.status ===
-        "DECLINED" ||
+      "DECLINED" ||
       enquiry.status ===
-        "CLOSED" ||
+      "CLOSED" ||
       enquiry.status ===
-        "CONFIRMED"
+      "CONFIRMED"
     ) {
       return res.status(409).json({
         message:
@@ -1609,7 +1666,7 @@ export const getPractitionerAppointments = async (
 
     const status =
       typeof req.query.status ===
-      "string"
+        "string"
         ? req.query.status
         : undefined;
 
@@ -1641,9 +1698,9 @@ export const getPractitionerAppointments = async (
 
           ...(status
             ? {
-                status:
-                  status as AppointmentStatus,
-              }
+              status:
+                status as AppointmentStatus,
+            }
             : {}),
         },
 

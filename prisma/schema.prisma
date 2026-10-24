@@ -319,6 +319,10 @@ model SessionProposal {
 
   sessionType String @default("VIDEO")
 
+  // Fee proposed for this specific session.
+  sessionFee Decimal? @db.Decimal(10, 2)
+  currency   String   @default("INR")
+
   proposedBy SessionProposalAuthor @default(PRACTITIONER)
 
   practitionerMessage String?
@@ -359,13 +363,17 @@ model Appointment {
 
   sessionType String @default("VIDEO")
 
+  // Final fee agreed for this appointment.
+  sessionFee Decimal? @db.Decimal(10, 2)
+  currency   String   @default("INR")
+
   status AppointmentStatus @default(CONFIRMED)
 
   cancelledAt DateTime?
 
   completedAt DateTime?
 
-  livekitRoomName      String?   @unique
+  livekitRoomName      String? @unique
   callStartedAt        DateTime?
   callEndedAt          DateTime?
   userJoinedAt         DateTime?

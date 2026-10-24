@@ -99,27 +99,27 @@ export const createEnquiry = async (
     const practitioner =
       await prisma.practitionerProfile.findFirst({
         where: {
-  id: String(
-    practitionerId
-  ),
+          id: String(
+            practitionerId
+          ),
 
-  approvalStatus:
-    "APPROVED",
+          approvalStatus:
+            "APPROVED",
 
-  onboardingCompleted:
-    true,
+          onboardingCompleted:
+            true,
 
-  isVisible:
-    true,
+          isVisible:
+            true,
 
-  acceptingNewClients:
-    true,
+          acceptingNewClients:
+            true,
 
-  user: {
-    role:
-      "PRACTITIONER",
-  },
-},
+          user: {
+            role:
+              "PRACTITIONER",
+          },
+        },
 
         select: {
           id: true,
@@ -724,6 +724,16 @@ export const proposeAnotherTime = async (
                     ?.sessionType ||
                   "VIDEO",
 
+                sessionFee:
+                  enquiry.appointment?.sessionFee ??
+                  activeProposal?.sessionFee ??
+                  null,
+
+                currency:
+                  enquiry.appointment?.currency ??
+                  activeProposal?.currency ??
+                  "INR",
+
                 proposedBy:
                   "USER",
 
@@ -993,6 +1003,12 @@ export const acceptProposal = async (
                 sessionType:
                   proposal.sessionType,
 
+                sessionFee:
+                  proposal.sessionFee,
+
+                currency:
+                  proposal.currency,
+
                 status:
                   "CONFIRMED",
 
@@ -1018,6 +1034,12 @@ export const acceptProposal = async (
 
                 sessionType:
                   proposal.sessionType,
+
+                sessionFee:
+                  proposal.sessionFee,
+
+                currency:
+                  proposal.currency,
 
                 status:
                   "CONFIRMED",

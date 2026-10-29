@@ -63,6 +63,9 @@ import notificationRoutes
 import videoCallRoutes
   from "./routes/videoCall.route";
 
+  import journalRoutes
+  from "./routes/journal.route";
+
 
 const app =
   express();
@@ -166,6 +169,15 @@ app.use(
   wellbeingQuestionnaireRoutes
 );
 
+// ======================================================
+// JOURNAL
+// ======================================================
+
+app.use(
+  "/api/journal",
+  journalRoutes
+);
+
 
 // ======================================================
 // MARKETPLACE
@@ -226,6 +238,8 @@ app.use(
   "/api/video",
   videoCallRoutes
 );
+
+
 
 
 // ======================================================

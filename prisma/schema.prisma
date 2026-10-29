@@ -60,6 +60,25 @@ enum NotificationType {
   PROPOSAL_DECLINED
 }
 
+// ======================================================
+// JOURNAL
+// ======================================================
+
+enum JournalEntryStatus {
+  DRAFT
+  SAVED
+}
+
+enum JournalEntryType {
+  TEMPLATE
+  CUSTOM
+}
+
+enum JournalCustomBlockType {
+  QUESTION
+  NOTE
+}
+
 // USERS
 model User {
   id           String   @id @default(uuid())
@@ -109,6 +128,9 @@ model User {
   socialConnections    SocialConnection[]
   wellbeingSubmissions WellbeingSubmission[]
   blogs                Blog[]
+
+  // Journal
+  journalEntries JournalEntry[]
 
   // Marketplace
   practitionerProfile  PractitionerProfile?
@@ -373,7 +395,7 @@ model Appointment {
 
   completedAt DateTime?
 
-  livekitRoomName      String? @unique
+  livekitRoomName      String?   @unique
   callStartedAt        DateTime?
   callEndedAt          DateTime?
   userJoinedAt         DateTime?
@@ -1262,4 +1284,125 @@ model Notification {
   createdAt DateTime @default(now())
 
   @@index([userId, isRead, createdAt])
+}
+
+// ======================================================
+// JOURNAL
+// ======================================================
+
+model JournalTemplate {
+  id String @id @default(uuid())
+
+  slug String @unique
+
+  title       String
+  description String?
+  imageKey    String?
+
+  isActive  Boolean @default(true)
+  sortOrder Int     @default(0)
+
+  questions JournalTemplateQuestion[]
+  entries   JournalEntry[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([isActive, sortOrder])
+}
+
+model JournalTemplateQuestion {
+  id String @id @default(uuid())
+
+  templateId String
+  template   JournalTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  questionKey  String
+  questionText String
+  helperText   String?
+
+  sortOrder Int
+
+  isRequired Boolean @default(false)
+  isActive   Boolean @default(true)
+
+  answers JournalAnswer[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([templateId, questionKey])
+  @@index([templateId, isActive, sortOrder])
+}
+
+model JournalEntry {
+  id String @id @default(uuid())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  templateId String?
+  template   JournalTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+
+  type   JournalEntryType
+  status JournalEntryStatus @default(DRAFT)
+
+  title   String?
+  content String? @db.Text
+
+  entryDate DateTime @default(now())
+
+  templateTitleSnapshot       String?
+  templateDescriptionSnapshot String?
+
+  answers      JournalAnswer[]
+  customBlocks JournalCustomBlock[]
+
+  savedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, status, entryDate])
+  @@index([userId, updatedAt])
+  @@index([templateId])
+}
+
+model JournalAnswer {
+  id String @id @default(uuid())
+
+  entryId String
+  entry   JournalEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+
+  questionId String
+  question   JournalTemplateQuestion @relation(fields: [questionId], references: [id], onDelete: Restrict)
+
+  questionTextSnapshot String
+  answer               String @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([entryId, questionId])
+  @@index([entryId])
+  @@index([questionId])
+}
+
+model JournalCustomBlock {
+  id String @id @default(uuid())
+
+  entryId String
+  entry   JournalEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+
+  type JournalCustomBlockType
+
+  prompt  String?
+  content String  @db.Text
+
+  sortOrder Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([entryId, sortOrder])
 }

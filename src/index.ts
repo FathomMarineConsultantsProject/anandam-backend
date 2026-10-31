@@ -39,6 +39,12 @@ import sleepAudioRoutes
 import wellbeingQuestionnaireRoutes
   from "./routes/wellbeingQuestionnaire.route";
 
+import tokenRoutes
+  from "./routes/token.route";
+
+  import psychometricRoutes
+  from "./routes/psychometric.route";
+
 
 // Marketplace
 
@@ -57,13 +63,15 @@ import practitionerRoutes
 import practitionerOnboardingRoutes
   from "./routes/practitionerOnboarding.route";
 
+  
+
 import notificationRoutes
   from "./routes/notification.route";
 
 import videoCallRoutes
   from "./routes/videoCall.route";
 
-  import journalRoutes
+import journalRoutes
   from "./routes/journal.route";
 
 
@@ -178,6 +186,15 @@ app.use(
   journalRoutes
 );
 
+// ======================================================
+// PSYCHOMETRIC ASSESSMENTS
+// ======================================================
+
+app.use(
+  "/api/psychometrics",
+  psychometricRoutes
+);
+
 
 // ======================================================
 // MARKETPLACE
@@ -220,6 +237,14 @@ app.use(
   practitionerOnboardingRoutes
 );
 
+// ======================================================
+// TOKENS
+// ======================================================
+
+app.use(
+  "/api/tokens",
+  tokenRoutes
+);
 
 // User + practitioner notification bell
 

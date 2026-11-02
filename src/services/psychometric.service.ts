@@ -1156,7 +1156,8 @@ export async function startPsychometricSection(
 
 
 type AnswerPayload = {
-  attemptQuestionId: string;
+  attemptQuestionId?: string;
+  questionId?: string;
   selectedOption?: string;
   likertValue?: number;
 };
@@ -1202,15 +1203,26 @@ export async function savePsychometricAnswers(
     );
   }
 
-  const questionMap =
-    new Map(
-      attempt.questions.map(
-        (question) => [
-          question.id,
-          question,
-        ]
-      )
-    );
+ const questionMapByAttemptQuestionId =
+  new Map(
+    attempt.questions.map(
+      (question) => [
+        question.id,
+        question,
+      ]
+    )
+  );
+
+
+const questionMapByQuestionId =
+  new Map(
+    attempt.questions.map(
+      (question) => [
+        question.questionId,
+        question,
+      ]
+    )
+  );
 
   await prisma.$transaction(
     async (tx) => {
@@ -1218,16 +1230,29 @@ export async function savePsychometricAnswers(
         const answer
         of answers
       ) {
+        
         const attemptQuestion =
-          questionMap.get(
-            answer.attemptQuestionId
-          );
+  (
+    answer.attemptQuestionId
+      ? questionMapByAttemptQuestionId.get(
+          answer.attemptQuestionId
+        )
+      : undefined
+  ) ||
+  (
+    answer.questionId
+      ? questionMapByQuestionId.get(
+          answer.questionId
+        )
+      : undefined
+  );
 
-        if (!attemptQuestion) {
-          throw new PsychometricError(
-            "One or more questions do not belong to this assessment."
-          );
-        }
+
+if (!attemptQuestion) {
+  throw new PsychometricError(
+    "One or more questions do not belong to this assessment."
+  );
+}
 
         if (
           attempt.test.type ===

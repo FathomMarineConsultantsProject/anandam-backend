@@ -19,6 +19,7 @@ import {
   startPsychometricSection,
   submitPsychometricAttempt,
   submitPsychometricSection,
+  unlockPsychometricAnswers,
 } from "../services/psychometric.service";
 
 
@@ -563,6 +564,45 @@ export async function getPsychometricHistoryController(
     return res.status(200).json({
       history,
     });
+  } catch (error) {
+    next(error);
+  }
+}
+
+// ======================================================
+// UNLOCK CORRECT ANSWERS
+// ======================================================
+
+export async function unlockPsychometricAnswersController(
+  req: Request,
+  res: Response,
+  next: NextFunction
+) {
+  try {
+    const userId =
+      requireUserId(
+        req as AuthenticatedRequest
+      );
+
+
+    const attemptId =
+      asString(
+        req.params.attemptId
+      );
+
+
+    const result =
+      await unlockPsychometricAnswers(
+        userId,
+        attemptId
+      );
+
+
+    return res
+      .status(200)
+      .json({
+        result,
+      });
   } catch (error) {
     next(error);
   }

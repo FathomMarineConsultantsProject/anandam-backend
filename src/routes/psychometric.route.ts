@@ -15,6 +15,7 @@ import {
   startPsychometricSectionController,
   submitPsychometricAttemptController,
   submitPsychometricSectionController,
+  unlockPsychometricAnswersController,
 } from "../controllers/psychometric.controller";
 
 
@@ -75,6 +76,15 @@ router.get(
 router.post(
   "/attempts/:attemptId/answers",
   savePsychometricAnswersController
+);
+
+// ======================================================
+// UNLOCK CORRECT ANSWERS
+// ======================================================
+
+router.post(
+  "/attempts/:attemptId/unlock-answers",
+  unlockPsychometricAnswersController
 );
 
 

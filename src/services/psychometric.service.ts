@@ -13,7 +13,7 @@ import {
 const prisma =
   new PrismaClient();
 
-
+  
 export class PsychometricError
   extends Error {
   statusCode: number;
@@ -1011,24 +1011,29 @@ export async function getPsychometricTest(
 
 export async function startPsychometricAttempt(
   userId: string,
-  testCode: string
+  testCode: string,
+  confirmTokenSpend = false
 ) {
+  // =====================================================
+  // 1. LOAD TEST
+  // =====================================================
+
   const test =
-    await prisma.psychometricTest
-      .findUnique({
-        where: {
-          code:
-            testCode,
-        },
-        include: {
-          sections: {
-            orderBy: {
-              sortOrder:
-                "asc",
-            },
+    await prisma.psychometricTest.findUnique({
+      where: {
+        code: testCode,
+      },
+
+      include: {
+        sections: {
+          orderBy: {
+            sortOrder:
+              "asc",
           },
         },
-      });
+      },
+    });
+
 
   if (
     !test ||
@@ -1040,145 +1045,234 @@ export async function startPsychometricAttempt(
     );
   }
 
-  const existing =
-    await prisma.psychometricAttempt
-      .findFirst({
-        where: {
-          userId,
-          testId:
-            test.id,
-          status:
-            PsychometricAttemptStatus.IN_PROGRESS,
-        },
-        orderBy: {
-          startedAt:
-            "desc",
-        },
-      });
 
-  if (
-    existing
-  ) {
+  // =====================================================
+  // 2. RESUME EXISTING ACTIVE ATTEMPT
+  //
+  // IMPORTANT:
+  // Never charge tokens again when simply resuming
+  // an assessment that has already been started.
+  // =====================================================
+
+  const existing =
+    await prisma.psychometricAttempt.findFirst({
+      where: {
+        userId,
+
+        testId:
+          test.id,
+
+        status:
+          PsychometricAttemptStatus.IN_PROGRESS,
+      },
+
+      orderBy: {
+        startedAt:
+          "desc",
+      },
+    });
+
+
+  if (existing) {
     return getPsychometricAttempt(
       userId,
       existing.id
     );
   }
 
-  const attempt =
+
+  // =====================================================
+  // 3. CREATE NEW ATTEMPT INSIDE TRANSACTION
+  //
+  // First attempt:
+  //   free -> create immediately
+  //
+  // Repeat attempt:
+  //   first request -> return token information
+  //   confirmed request -> deduct tokens + create attempt
+  // =====================================================
+
+  const outcome =
     await prisma.$transaction(
       async (tx) => {
-        const totalPreviousAttempts =
-          await tx.psychometricAttempt
-            .count({
-              where: {
-                userId,
+        // -----------------------------------------------
+        // Count previous attempts
+        // -----------------------------------------------
 
-                testId:
-                  test.id,
-              },
-            });
+        const previousCount =
+          await tx.psychometricAttempt.count({
+            where: {
+              userId,
 
-
-        const completedPreviousAttempts =
-          await tx.psychometricAttempt
-            .count({
-              where: {
-                userId,
-
-                testId:
-                  test.id,
-
-                status:
-                  PsychometricAttemptStatus.COMPLETED,
-              },
-            });
+              testId:
+                test.id,
+            },
+          });
 
 
         const attemptNumber =
-          totalPreviousAttempts +
-          1;
+          previousCount + 1;
 
+
+        // -----------------------------------------------
+        // Decide whether this attempt is free
+        // -----------------------------------------------
 
         const freeAttempt =
           test.firstAttemptFree &&
-          completedPreviousAttempts ===
-          0;
+          previousCount === 0;
 
 
         const tokenCost =
           freeAttempt
             ? 0
-            : test.repeatTokenCost;
+            : Number(
+                test.repeatTokenCost ||
+                  0
+              );
 
+
+        // -----------------------------------------------
+        // Load user's current token balance
+        // -----------------------------------------------
+
+        const wallet =
+          await tx.tokenWallet.findUnique({
+            where: {
+              userId,
+            },
+          });
+
+
+        const walletBalance =
+          wallet?.balance ??
+          0;
+
+
+        // =================================================
+        // TOKEN CONFIRMATION REQUIRED
+        //
+        // Do NOT create attempt.
+        // Do NOT deduct tokens.
+        //
+        // Frontend will show popup from this response.
+        // =================================================
+
+        if (
+          tokenCost > 0 &&
+          !confirmTokenSpend
+        ) {
+          return {
+            paymentRequired:
+              true as const,
+
+            requiredTokens:
+              tokenCost,
+
+            walletBalance,
+
+            hasEnoughTokens:
+              walletBalance >=
+              tokenCost,
+
+            attemptNumber,
+
+            testCode:
+              test.code,
+
+            testTitle:
+              test.title,
+          };
+        }
+
+
+        // =================================================
+        // USER CONFIRMED BUT DOES NOT HAVE ENOUGH TOKENS
+        //
+        // Still do NOT create anything.
+        // =================================================
+
+        if (
+          tokenCost > 0 &&
+          confirmTokenSpend &&
+          walletBalance <
+            tokenCost
+        ) {
+          return {
+            paymentRequired:
+              true as const,
+
+            requiredTokens:
+              tokenCost,
+
+            walletBalance,
+
+            hasEnoughTokens:
+              false,
+
+            attemptNumber,
+
+            testCode:
+              test.code,
+
+            testTitle:
+              test.title,
+          };
+        }
+
+
+        // =================================================
+        // CREATE ATTEMPT
+        // =================================================
+
+        const created =
+          await tx.psychometricAttempt.create({
+            data: {
+              userId,
+
+              testId:
+                test.id,
+
+              attemptNumber,
+
+              status:
+                PsychometricAttemptStatus.IN_PROGRESS,
+
+              tokenCost,
+
+              usedFreeAttempt:
+                freeAttempt,
+            },
+          });
+
+
+        // =================================================
+        // DEDUCT TOKENS
+        //
+        // Only happens AFTER:
+        // - repeat attempt detected
+        // - user explicitly confirmed
+        // - sufficient balance confirmed
+        //
+        // If anything below fails, transaction rolls back.
+        // =================================================
 
         if (
           tokenCost > 0
         ) {
-          const wallet =
-            await tx.tokenWallet
-              .upsert({
-                where: {
-                  userId,
-                },
-
-                update: {},
-
-                create: {
-                  userId,
-                  balance: 0,
-                },
-              });
-
-
-          if (
-            wallet.balance <
-            tokenCost
-          ) {
-            throw new PsychometricError(
-              `${tokenCost} tokens are required to take this assessment again.`,
-              402,
-              "PSYCHOMETRIC_PAYMENT_REQUIRED",
-              {
-                requiredTokens:
-                  tokenCost,
-
-                walletBalance:
-                  wallet.balance,
-
-                testCode:
-                  test.code,
-
-                testTitle:
-                  test.title,
-              }
-            );
-          }
+          await debitTokens(
+            tx,
+            userId,
+            tokenCost,
+            `psychometric:${test.code}`,
+            created.id
+          );
         }
 
-        const created =
-          await tx.psychometricAttempt
-            .create({
-              data: {
-                userId,
-                testId:
-                  test.id,
-                attemptNumber,
-                status:
-                  PsychometricAttemptStatus.IN_PROGRESS,
-                tokenCost,
-                usedFreeAttempt:
-                  freeAttempt,
-              },
-            });
 
-        await debitTokens(
-          tx,
-          userId,
-          tokenCost,
-          `psychometric:${test.code}`,
-          created.id
-        );
+        // =================================================
+        // MARITIME HUMAN PERFORMANCE
+        // =================================================
 
         if (
           test.type ===
@@ -1190,77 +1284,124 @@ export async function startPsychometricAttempt(
               test.id
             );
 
-          await tx.psychometricAttemptQuestion
-            .createMany({
-              data:
-                selected.map(
-                  (item) => ({
-                    attemptId:
-                      created.id,
-                    questionId:
-                      item.questionId,
-                    sectionCode:
-                      item.sectionCode,
-                    questionOrder:
-                      item.questionOrder,
-                  })
-                ),
-            });
 
-          await tx.psychometricAttemptSection
-            .createMany({
-              data:
-                test.sections.map(
-                  (section) => ({
-                    attemptId:
-                      created.id,
-                    sectionId:
-                      section.id,
-                  })
-                ),
-            });
-        } else {
-          const questions =
-            await tx.psychometricQuestion
-              .findMany({
-                where: {
-                  testId:
-                    test.id,
-                  isActive:
-                    true,
-                },
-                orderBy: {
-                  sortOrder:
-                    "asc",
-                },
-              });
+          await tx.psychometricAttemptQuestion.createMany({
+            data:
+              selected.map(
+                (item) => ({
+                  attemptId:
+                    created.id,
 
-          await tx.psychometricAttemptQuestion
-            .createMany({
-              data:
-                questions.map(
-                  (
-                    question,
-                    index
-                  ) => ({
-                    attemptId:
-                      created.id,
-                    questionId:
-                      question.id,
-                    questionOrder:
-                      index + 1,
-                  })
-                ),
-            });
+                  questionId:
+                    item.questionId,
+
+                  sectionCode:
+                    item.sectionCode,
+
+                  questionOrder:
+                    item.questionOrder,
+                })
+              ),
+          });
+
+
+          await tx.psychometricAttemptSection.createMany({
+            data:
+              test.sections.map(
+                (section) => ({
+                  attemptId:
+                    created.id,
+
+                  sectionId:
+                    section.id,
+                })
+              ),
+          });
         }
 
-        return created;
+        // =================================================
+        // PERSONALITY / BEHAVIOURAL / MOTIVATION
+        // =================================================
+
+        else {
+          const questions =
+            await tx.psychometricQuestion.findMany({
+              where: {
+                testId:
+                  test.id,
+
+                isActive:
+                  true,
+              },
+
+              orderBy: {
+                sortOrder:
+                  "asc",
+              },
+            });
+
+
+          if (
+            questions.length ===
+            0
+          ) {
+            throw new PsychometricError(
+              "No active questions are available for this assessment.",
+              500
+            );
+          }
+
+
+          await tx.psychometricAttemptQuestion.createMany({
+            data:
+              questions.map(
+                (
+                  question,
+                  index
+                ) => ({
+                  attemptId:
+                    created.id,
+
+                  questionId:
+                    question.id,
+
+                  questionOrder:
+                    index + 1,
+                })
+              ),
+          });
+        }
+
+
+        return {
+          paymentRequired:
+            false as const,
+
+          attemptId:
+            created.id,
+        };
       }
     );
 
+
+  // =====================================================
+  // 4. PAYMENT/TOKEN INFORMATION RESPONSE
+  // =====================================================
+
+  if (
+    outcome.paymentRequired
+  ) {
+    return outcome;
+  }
+
+
+  // =====================================================
+  // 5. RETURN COMPLETE CREATED ATTEMPT
+  // =====================================================
+
   return getPsychometricAttempt(
     userId,
-    attempt.id
+    outcome.attemptId
   );
 }
 

@@ -21,12 +21,37 @@ const prisma =
 
 const getUserId = (
   req: Request
-) => {
-  return (
-    req as any
-  ).user?.userId as
+): string | undefined => {
+  const userId =
+    (req as any)?.user?.userId ||
+    (req as any)?.userId ||
+    (req as any)?.user?.id;
+
+  return userId
+    ? String(userId)
+    : undefined;
+};
+
+
+// ======================================================
+// ROUTE PARAM HELPER
+// Express may type route params as string | string[].
+// Prisma requires a definite string.
+// ======================================================
+
+const getParamString = (
+  value:
     | string
-    | undefined;
+    | string[]
+    | undefined
+): string => {
+  if (
+    Array.isArray(value)
+  ) {
+    return value[0] || "";
+  }
+
+  return value || "";
 };
 
 
@@ -111,9 +136,18 @@ export const getJournalTemplateBySlug =
     res: Response
   ) => {
     try {
-      const {
-        slug,
-      } = req.params;
+      const slug =
+        getParamString(
+          req.params.slug
+        );
+
+
+      if (!slug) {
+        return res.status(400).json({
+          message:
+            "Journal template slug is required.",
+        });
+      }
 
 
       const template =
@@ -388,9 +422,18 @@ export const updateJournalEntry =
       }
 
 
-      const {
-        entryId,
-      } = req.params;
+      const entryId =
+        getParamString(
+          req.params.entryId
+        );
+
+
+      if (!entryId) {
+        return res.status(400).json({
+          message:
+            "Journal entry ID is required.",
+        });
+      }
 
 
       const existingEntry =
@@ -437,7 +480,9 @@ export const updateJournalEntry =
 
 
       const answerList =
-        Array.isArray(answers)
+        Array.isArray(
+          answers
+        )
           ? answers
           : null;
 
@@ -450,12 +495,9 @@ export const updateJournalEntry =
           : null;
 
 
-      /*
-        Validate template question IDs.
-
-        Prevent a user from attaching answers
-        from another template.
-      */
+      // ==================================================
+      // VALIDATE TEMPLATE QUESTION IDS
+      // ==================================================
 
       let validQuestionMap =
         new Map<
@@ -490,11 +532,16 @@ export const updateJournalEntry =
           const answer
           of answerList
         ) {
+          const questionId =
+            String(
+              answer?.questionId ||
+              ""
+            );
+
+
           if (
             !validQuestionMap.has(
-              String(
-                answer.questionId
-              )
+              questionId
             )
           ) {
             return res.status(400).json({
@@ -554,6 +601,10 @@ export const updateJournalEntry =
               });
 
 
+            // ============================================
+            // TEMPLATE ANSWERS
+            // ============================================
+
             if (answerList) {
               await tx
                 .journalAnswer
@@ -578,7 +629,9 @@ export const updateJournalEntry =
                         ) => {
                           const questionId =
                             String(
-                              answer.questionId
+                              answer
+                                ?.questionId ||
+                              ""
                             );
 
 
@@ -590,11 +643,13 @@ export const updateJournalEntry =
                             questionTextSnapshot:
                               validQuestionMap.get(
                                 questionId
-                              ) || "",
+                              ) ||
+                              "",
 
                             answer:
                               String(
-                                answer.answer ||
+                                answer
+                                  ?.answer ||
                                   ""
                               ),
                           };
@@ -604,6 +659,10 @@ export const updateJournalEntry =
               }
             }
 
+
+            // ============================================
+            // CUSTOM BLOCKS
+            // ============================================
 
             if (
               customBlockList
@@ -633,13 +692,13 @@ export const updateJournalEntry =
                           entryId,
 
                           type:
-                            block.type ===
+                            block?.type ===
                             JournalCustomBlockType.NOTE
                               ? JournalCustomBlockType.NOTE
                               : JournalCustomBlockType.QUESTION,
 
                           prompt:
-                            block.prompt
+                            block?.prompt
                               ? String(
                                   block.prompt
                                 )
@@ -647,15 +706,20 @@ export const updateJournalEntry =
 
                           content:
                             String(
-                              block.content ||
+                              block
+                                ?.content ||
                                 ""
                             ),
 
                           sortOrder:
                             Number.isInteger(
-                              block.sortOrder
+                              block
+                                ?.sortOrder
                             )
-                              ? block.sortOrder
+                              ? Number(
+                                  block
+                                    .sortOrder
+                                )
                               : index +
                                 1,
                         })
@@ -717,9 +781,18 @@ export const saveJournalEntry =
       }
 
 
-      const {
-        entryId,
-      } = req.params;
+      const entryId =
+        getParamString(
+          req.params.entryId
+        );
+
+
+      if (!entryId) {
+        return res.status(400).json({
+          message:
+            "Journal entry ID is required.",
+        });
+      }
 
 
       const existing =
@@ -1018,9 +1091,18 @@ export const getMyJournalEntryById =
       }
 
 
-      const {
-        entryId,
-      } = req.params;
+      const entryId =
+        getParamString(
+          req.params.entryId
+        );
+
+
+      if (!entryId) {
+        return res.status(400).json({
+          message:
+            "Journal entry ID is required.",
+        });
+      }
 
 
       const entry =
@@ -1078,9 +1160,18 @@ export const deleteJournalEntry =
       }
 
 
-      const {
-        entryId,
-      } = req.params;
+      const entryId =
+        getParamString(
+          req.params.entryId
+        );
+
+
+      if (!entryId) {
+        return res.status(400).json({
+          message:
+            "Journal entry ID is required.",
+        });
+      }
 
 
       const existing =

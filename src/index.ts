@@ -42,8 +42,12 @@ import wellbeingQuestionnaireRoutes
 import tokenRoutes
   from "./routes/token.route";
 
-  import psychometricRoutes
+import psychometricRoutes
   from "./routes/psychometric.route";
+
+import {
+  PsychometricError,
+} from "./services/psychometric.service";
 
 
 // Marketplace
@@ -63,7 +67,7 @@ import practitionerRoutes
 import practitionerOnboardingRoutes
   from "./routes/practitionerOnboarding.route";
 
-  
+
 
 import notificationRoutes
   from "./routes/notification.route";
@@ -266,20 +270,53 @@ app.use(
 
 // ======================================================
 // GLOBAL ERROR HANDLER
-// Keep this AFTER all routes
+// IMPORTANT: keep this AFTER all routes
+// and BEFORE app.listen()
 // ======================================================
 
 app.use(
   (
     error: any,
-    req: express.Request,
+    _req: express.Request,
     res: express.Response,
-    next: express.NextFunction
+    _next: express.NextFunction
   ) => {
     console.error(
       "API ERROR:",
       error
     );
+
+
+    // ==================================================
+    // PSYCHOMETRIC ERRORS
+    // Preserve payment/token information for frontend.
+    // ==================================================
+
+    if (
+      error instanceof
+      PsychometricError
+    ) {
+      return res
+        .status(
+          error.statusCode
+        )
+        .json({
+          message:
+            error.message,
+
+          code:
+            error.code ||
+            "PSYCHOMETRIC_ERROR",
+
+          ...(error.details ||
+            {}),
+        });
+    }
+
+
+    // ==================================================
+    // ALL OTHER API ERRORS
+    // ==================================================
 
     const statusCode =
       Number(
@@ -288,41 +325,63 @@ app.use(
         500
       );
 
+
     let code =
       "INTERNAL_SERVER_ERROR";
 
-    if (statusCode === 400) {
+
+    if (
+      statusCode === 400
+    ) {
       code =
         "BAD_REQUEST";
     }
 
-    if (statusCode === 401) {
+
+    if (
+      statusCode === 401
+    ) {
       code =
         "UNAUTHORIZED";
     }
 
-    if (statusCode === 402) {
+
+    if (
+      statusCode === 402
+    ) {
       code =
         "PAYMENT_REQUIRED";
     }
 
-    if (statusCode === 403) {
+
+    if (
+      statusCode === 403
+    ) {
       code =
         "FORBIDDEN";
     }
 
-    if (statusCode === 404) {
+
+    if (
+      statusCode === 404
+    ) {
       code =
         "NOT_FOUND";
     }
 
-    if (statusCode === 409) {
+
+    if (
+      statusCode === 409
+    ) {
       code =
         "CONFLICT";
     }
 
+
     return res
-      .status(statusCode)
+      .status(
+        statusCode
+      )
       .json({
         message:
           error?.message ||
@@ -332,6 +391,7 @@ app.use(
       });
   }
 );
+
 
 
 // ======================================================

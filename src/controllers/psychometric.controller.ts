@@ -313,15 +313,18 @@ export async function submitPsychometricSectionController(
         req as AuthenticatedRequest
       );
 
+
     const attemptId =
       asString(
         req.params.attemptId
       );
 
+
     const sectionCode =
       asString(
         req.params.sectionCode
       ).toUpperCase() as PsychometricSectionCode;
+
 
     if (
       !Object.values(
@@ -333,8 +336,34 @@ export async function submitPsychometricSectionController(
       return res.status(400).json({
         message:
           "Invalid section code.",
+
+        code:
+          "INVALID_SECTION_CODE",
       });
     }
+
+
+    const answers =
+      Array.isArray(
+        req.body?.answers
+      )
+        ? req.body.answers
+        : [];
+
+
+    // Save any answers sent together
+    // with the section submission.
+    if (
+      answers.length >
+      0
+    ) {
+      await savePsychometricAnswers(
+        userId,
+        attemptId,
+        answers
+      );
+    }
+
 
     const result =
       await submitPsychometricSection(
@@ -343,9 +372,12 @@ export async function submitPsychometricSectionController(
         sectionCode
       );
 
-    return res.status(200).json(
-      result
-    );
+
+    return res
+      .status(200)
+      .json(
+        result
+      );
   } catch (error) {
     next(error);
   }
@@ -363,10 +395,32 @@ export async function submitPsychometricAttemptController(
         req as AuthenticatedRequest
       );
 
+
     const attemptId =
       asString(
         req.params.attemptId
       );
+
+
+    const answers =
+      Array.isArray(
+        req.body?.answers
+      )
+        ? req.body.answers
+        : [];
+
+
+    if (
+      answers.length >
+      0
+    ) {
+      await savePsychometricAnswers(
+        userId,
+        attemptId,
+        answers
+      );
+    }
+
 
     const result =
       await submitPsychometricAttempt(
@@ -374,9 +428,12 @@ export async function submitPsychometricAttemptController(
         attemptId
       );
 
-    return res.status(200).json(
-      result
-    );
+
+    return res
+      .status(200)
+      .json(
+        result
+      );
   } catch (error) {
     next(error);
   }

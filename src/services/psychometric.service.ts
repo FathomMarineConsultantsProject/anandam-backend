@@ -2946,41 +2946,172 @@ export async function unlockPsychometricAnswers(
       // ==================================================
 
       const answers =
-        attempt.questions.map(
+  attempt.questions.map(
+    (
+      item,
+      index
+    ) => {
+      const question =
+        item.question;
+
+
+      const selectedOption =
+        item.selectedOption;
+
+
+      const correctOption =
+        question.correctOption;
+
+
+      const optionMap: Record<
+        string,
+        string | null
+      > = {
+        A:
+          question.optionA,
+
+        B:
+          question.optionB,
+
+        C:
+          question.optionC,
+
+        D:
+          question.optionD,
+      };
+
+
+      return {
+        id:
+          item.id,
+
+        attemptQuestionId:
+          item.id,
+
+        questionId:
+          item.questionId,
+
+        questionNumber:
+          index + 1,
+
+        questionOrder:
+          item.questionOrder,
+
+        sectionCode:
+          item.sectionCode,
+
+        itemCode:
+          question.itemCode,
+
+        domain:
+          question.domain,
+
+        competency:
+          question.competency,
+
+        questionText:
+          question.questionText,
+
+
+        // ==========================================
+        // ALL FOUR OPTIONS
+        // ==========================================
+
+        optionA:
+          question.optionA,
+
+        optionB:
+          question.optionB,
+
+        optionC:
+          question.optionC,
+
+        optionD:
+          question.optionD,
+
+
+        // Normalized options array for frontend
+        options: [
+          {
+            key: "A",
+            value: "A",
+            text:
+              question.optionA,
+            label:
+              question.optionA,
+          },
+
+          {
+            key: "B",
+            value: "B",
+            text:
+              question.optionB,
+            label:
+              question.optionB,
+          },
+
+          {
+            key: "C",
+            value: "C",
+            text:
+              question.optionC,
+            label:
+              question.optionC,
+          },
+
+          {
+            key: "D",
+            value: "D",
+            text:
+              question.optionD,
+            label:
+              question.optionD,
+          },
+        ].filter(
           (
-            item,
-            index
-          ) => ({
-            id:
-              item.id,
+            option
+          ) =>
+            Boolean(
+              option.text
+            )
+        ),
 
-            attemptQuestionId:
-              item.id,
 
-            questionId:
-              item.questionId,
+        // ==========================================
+        // USER ANSWER
+        // ==========================================
 
-            questionNumber:
-              index + 1,
+        selectedOption,
 
-            questionOrder:
-              item.questionOrder,
+        selectedOptionText:
+          selectedOption
+            ? optionMap[
+                selectedOption
+              ] ||
+              null
+            : null,
 
-            questionText:
-              item.question
-                .questionText,
 
-            selectedOption:
-              item.selectedOption,
+        // ==========================================
+        // CORRECT ANSWER
+        // ==========================================
 
-            correctOption:
-              item.question
-                .correctOption,
+        correctOption,
 
-            isCorrect:
-              item.isCorrect,
-          })
-        );
+        correctOptionText:
+          correctOption
+            ? optionMap[
+                correctOption
+              ] ||
+              null
+            : null,
+
+
+        isCorrect:
+          item.isCorrect,
+      };
+    }
+  );
 
 
       return {

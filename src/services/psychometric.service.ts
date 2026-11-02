@@ -68,16 +68,16 @@ function shuffle<T>(
     const randomIndex =
       Math.floor(
         Math.random() *
-          (index + 1)
+        (index + 1)
       );
 
     [
       copy[index],
       copy[randomIndex],
     ] = [
-      copy[randomIndex],
-      copy[index],
-    ];
+        copy[randomIndex],
+        copy[index],
+      ];
   }
 
   return copy;
@@ -266,33 +266,32 @@ async function debitTokens(
       });
 
   if (
-  wallet.balance <
-  amount
-) {
-  throw new PsychometricError(
-    `You need ${amount} token${
-      amount === 1
+    wallet.balance <
+    amount
+  ) {
+    throw new PsychometricError(
+      `You need ${amount} token${amount === 1
         ? ""
         : "s"
-    } to take this assessment again.`,
+      } to take this assessment again.`,
 
-    402,
+      402,
 
-    "PSYCHOMETRIC_PAYMENT_REQUIRED",
+      "PSYCHOMETRIC_PAYMENT_REQUIRED",
 
-    {
-      requiredTokens:
-        amount,
+      {
+        requiredTokens:
+          amount,
 
-      walletBalance:
-        wallet.balance,
+        walletBalance:
+          wallet.balance,
 
-      featureKey,
+        featureKey,
 
-      referenceId,
-    }
-  );
-}
+        referenceId,
+      }
+    );
+  }
 
   const updatedWallet =
     await tx.tokenWallet
@@ -538,11 +537,11 @@ async function finishMaritimeAttempt(
   const percentage =
     maxScore > 0
       ? Number(
-          (
-            (score / maxScore) *
-            100
-          ).toFixed(2)
-        )
+        (
+          (score / maxScore) *
+          100
+        ).toFixed(2)
+      )
       : 0;
 
   await tx.psychometricAttempt
@@ -677,14 +676,14 @@ export async function listPsychometricTests(
           const nextAttemptFree =
             test.firstAttemptFree &&
             completedCount ===
-              0;
+            0;
 
 
           const paymentRequired =
             !activeAttempt &&
             !nextAttemptFree &&
             test.repeatTokenCost >
-              0;
+            0;
 
 
           return {
@@ -738,7 +737,7 @@ export async function listPsychometricTests(
             hasEnoughTokens:
               !paymentRequired ||
               walletBalance >=
-                test.repeatTokenCost,
+              test.repeatTokenCost,
 
             walletBalance,
 
@@ -775,7 +774,7 @@ export async function listPsychometricTests(
               hasEnoughTokens:
                 !paymentRequired ||
                 walletBalance >=
-                  test.repeatTokenCost,
+                test.repeatTokenCost,
 
               activeAttemptId:
                 activeAttempt?.id ||
@@ -896,14 +895,14 @@ export async function getPsychometricTest(
   const nextAttemptFree =
     test.firstAttemptFree &&
     completedAttemptCount ===
-      0;
+    0;
 
 
   const paymentRequired =
     !activeAttempt &&
     !nextAttemptFree &&
     test.repeatTokenCost >
-      0;
+    0;
 
 
   return {
@@ -956,7 +955,7 @@ export async function getPsychometricTest(
     hasEnoughTokens:
       !paymentRequired ||
       walletBalance >=
-        test.repeatTokenCost,
+      test.repeatTokenCost,
 
     walletBalance,
 
@@ -991,7 +990,7 @@ export async function getPsychometricTest(
       hasEnoughTokens:
         !paymentRequired ||
         walletBalance >=
-          test.repeatTokenCost,
+        test.repeatTokenCost,
 
       activeAttemptId:
         activeAttempt?.id ||
@@ -1070,92 +1069,92 @@ export async function startPsychometricAttempt(
     await prisma.$transaction(
       async (tx) => {
         const totalPreviousAttempts =
-  await tx.psychometricAttempt
-    .count({
-      where: {
-        userId,
+          await tx.psychometricAttempt
+            .count({
+              where: {
+                userId,
 
-        testId:
-          test.id,
-      },
-    });
-
-
-const completedPreviousAttempts =
-  await tx.psychometricAttempt
-    .count({
-      where: {
-        userId,
-
-        testId:
-          test.id,
-
-        status:
-          PsychometricAttemptStatus.COMPLETED,
-      },
-    });
+                testId:
+                  test.id,
+              },
+            });
 
 
-const attemptNumber =
-  totalPreviousAttempts +
-  1;
+        const completedPreviousAttempts =
+          await tx.psychometricAttempt
+            .count({
+              where: {
+                userId,
+
+                testId:
+                  test.id,
+
+                status:
+                  PsychometricAttemptStatus.COMPLETED,
+              },
+            });
 
 
-const freeAttempt =
-  test.firstAttemptFree &&
-  completedPreviousAttempts ===
-    0;
+        const attemptNumber =
+          totalPreviousAttempts +
+          1;
 
 
-const tokenCost =
-  freeAttempt
-    ? 0
-    : test.repeatTokenCost;
+        const freeAttempt =
+          test.firstAttemptFree &&
+          completedPreviousAttempts ===
+          0;
 
 
-if (
-  tokenCost > 0
-) {
-  const wallet =
-    await tx.tokenWallet
-      .upsert({
-        where: {
-          userId,
-        },
-
-        update: {},
-
-        create: {
-          userId,
-          balance: 0,
-        },
-      });
+        const tokenCost =
+          freeAttempt
+            ? 0
+            : test.repeatTokenCost;
 
 
-  if (
-    wallet.balance <
-    tokenCost
-  ) {
-    throw new PsychometricError(
-      `${tokenCost} tokens are required to take this assessment again.`,
-      402,
-      "PSYCHOMETRIC_PAYMENT_REQUIRED",
-      {
-        requiredTokens:
-          tokenCost,
+        if (
+          tokenCost > 0
+        ) {
+          const wallet =
+            await tx.tokenWallet
+              .upsert({
+                where: {
+                  userId,
+                },
 
-        walletBalance:
-          wallet.balance,
+                update: {},
 
-        testCode:
-          test.code,
+                create: {
+                  userId,
+                  balance: 0,
+                },
+              });
 
-        testTitle:
-          test.title,
-      }
-    );
-  }
-}
+
+          if (
+            wallet.balance <
+            tokenCost
+          ) {
+            throw new PsychometricError(
+              `${tokenCost} tokens are required to take this assessment again.`,
+              402,
+              "PSYCHOMETRIC_PAYMENT_REQUIRED",
+              {
+                requiredTokens:
+                  tokenCost,
+
+                walletBalance:
+                  wallet.balance,
+
+                testCode:
+                  test.code,
+
+                testTitle:
+                  test.title,
+              }
+            );
+          }
+        }
 
         const created =
           await tx.psychometricAttempt
@@ -1349,12 +1348,12 @@ export async function getPsychometricAttempt(
             ),
           score:
             attempt.status ===
-            PsychometricAttemptStatus.COMPLETED
+              PsychometricAttemptStatus.COMPLETED
               ? item.score
               : undefined,
           maxScore:
             attempt.status ===
-            PsychometricAttemptStatus.COMPLETED
+              PsychometricAttemptStatus.COMPLETED
               ? item.maxScore
               : undefined,
         })
@@ -1377,17 +1376,17 @@ export async function getPsychometricAttempt(
       attempt.completedAt,
     score:
       attempt.status ===
-      PsychometricAttemptStatus.COMPLETED
+        PsychometricAttemptStatus.COMPLETED
         ? attempt.score
         : undefined,
     maxScore:
       attempt.status ===
-      PsychometricAttemptStatus.COMPLETED
+        PsychometricAttemptStatus.COMPLETED
         ? attempt.maxScore
         : undefined,
     percentage:
       attempt.status ===
-      PsychometricAttemptStatus.COMPLETED
+        PsychometricAttemptStatus.COMPLETED
         ? attempt.percentage
         : undefined,
     test: {
@@ -1404,56 +1403,56 @@ export async function getPsychometricAttempt(
     },
     sections,
     questions:
-  attempt.questions.map(
-    (item) => {
-      const safeQuestion =
-        sanitizeQuestion(
-          item.question
-        );
+      attempt.questions.map(
+        (item) => {
+          const safeQuestion =
+            sanitizeQuestion(
+              item.question
+            );
 
-      return {
-        // ID of PsychometricAttemptQuestion
-        id:
-          item.id,
+          return {
+            // ID of PsychometricAttemptQuestion
+            id:
+              item.id,
 
-        attemptQuestionId:
-          item.id,
+            attemptQuestionId:
+              item.id,
 
-        // ID of original PsychometricQuestion
-        questionId:
-          item.questionId,
+            // ID of original PsychometricQuestion
+            questionId:
+              item.questionId,
 
-        questionOrder:
-          item.questionOrder,
+            questionOrder:
+              item.questionOrder,
 
-        sectionCode:
-          item.sectionCode,
+            sectionCode:
+              item.sectionCode,
 
-        selectedOption:
-          item.selectedOption,
+            selectedOption:
+              item.selectedOption,
 
-        likertValue:
-          item.likertValue,
+            likertValue:
+              item.likertValue,
 
-        answeredAt:
-          item.answeredAt,
+            answeredAt:
+              item.answeredAt,
 
-        // -------------------------------
-        // FLAT FORMAT
-        // -------------------------------
+            // -------------------------------
+            // FLAT FORMAT
+            // -------------------------------
 
-        ...safeQuestion,
+            ...safeQuestion,
 
-        // -------------------------------
-        // NESTED FORMAT
-        // backwards compatibility
-        // -------------------------------
+            // -------------------------------
+            // NESTED FORMAT
+            // backwards compatibility
+            // -------------------------------
 
-        question:
-          safeQuestion,
-      };
-    }
-  ),
+            question:
+              safeQuestion,
+          };
+        }
+      ),
   };
 }
 
@@ -1573,7 +1572,7 @@ export async function startPsychometricSection(
 
   const current =
     ordered[
-      currentIndex
+    currentIndex
     ];
 
 
@@ -1603,10 +1602,10 @@ export async function startPsychometricSection(
     expiresAt =
       new Date(
         startedAt.getTime() +
-          current.section
-            .durationMinutes *
-            60 *
-            1000
+        current.section
+          .durationMinutes *
+        60 *
+        1000
       );
 
 
@@ -1791,26 +1790,26 @@ export async function savePsychometricAnswers(
     );
   }
 
- const questionMapByAttemptQuestionId =
-  new Map(
-    attempt.questions.map(
-      (question) => [
-        question.id,
-        question,
-      ]
-    )
-  );
+  const questionMapByAttemptQuestionId =
+    new Map(
+      attempt.questions.map(
+        (question) => [
+          question.id,
+          question,
+        ]
+      )
+    );
 
 
-const questionMapByQuestionId =
-  new Map(
-    attempt.questions.map(
-      (question) => [
-        question.questionId,
-        question,
-      ]
-    )
-  );
+  const questionMapByQuestionId =
+    new Map(
+      attempt.questions.map(
+        (question) => [
+          question.questionId,
+          question,
+        ]
+      )
+    );
 
   await prisma.$transaction(
     async (tx) => {
@@ -1818,29 +1817,29 @@ const questionMapByQuestionId =
         const answer
         of answers
       ) {
-        
+
         const attemptQuestion =
-  (
-    answer.attemptQuestionId
-      ? questionMapByAttemptQuestionId.get(
-          answer.attemptQuestionId
-        )
-      : undefined
-  ) ||
-  (
-    answer.questionId
-      ? questionMapByQuestionId.get(
-          answer.questionId
-        )
-      : undefined
-  );
+          (
+            answer.attemptQuestionId
+              ? questionMapByAttemptQuestionId.get(
+                answer.attemptQuestionId
+              )
+              : undefined
+          ) ||
+          (
+            answer.questionId
+              ? questionMapByQuestionId.get(
+                answer.questionId
+              )
+              : undefined
+          );
 
 
-if (!attemptQuestion) {
-  throw new PsychometricError(
-    "One or more questions do not belong to this assessment."
-  );
-}
+        if (!attemptQuestion) {
+          throw new PsychometricError(
+            "One or more questions do not belong to this assessment."
+          );
+        }
 
         if (
           attempt.test.type ===
@@ -1874,15 +1873,50 @@ if (!attemptQuestion) {
             section.submittedAt ||
             section.lockedAt
           ) {
+            const incomingSelected =
+              String(
+                answer.selectedOption ||
+                ""
+              )
+                .trim()
+                .toUpperCase();
+
+            const savedSelected =
+              String(
+                attemptQuestion.selectedOption ||
+                ""
+              )
+                .trim()
+                .toUpperCase();
+
+
+            // The frontend may resend answers from a
+            // previously completed section together
+            // with the current section answers.
+            //
+            // If the old answer is exactly the same,
+            // simply ignore it.
+            if (
+              incomingSelected &&
+              incomingSelected ===
+              savedSelected
+            ) {
+              continue;
+            }
+
+
+            // But never allow a submitted / locked
+            // section answer to be changed.
             throw new PsychometricError(
-              "This section is locked."
+              "A submitted section cannot be changed.",
+              409
             );
           }
 
           if (
             section.expiresAt &&
             section.expiresAt <
-              new Date()
+            new Date()
           ) {
             throw new PsychometricError(
               "The time limit for this section has expired.",
@@ -2113,7 +2147,7 @@ export async function submitPsychometricSection(
             item.question.correctOption
           ) &&
           item.selectedOption ===
-            item.question.correctOption;
+          item.question.correctOption;
 
         const points =
           correct
@@ -2185,8 +2219,8 @@ export async function submitPsychometricSection(
           isLast
             ? null
             : orderedSections[
-                currentIndex + 1
-              ].section.code,
+              currentIndex + 1
+            ].section.code,
       };
     }
   );
@@ -2254,10 +2288,9 @@ export async function submitPsychometricAttempt(
     0
   ) {
     throw new PsychometricError(
-      `Please answer all questions before submitting. ${unanswered.length} question${
-        unanswered.length === 1
-          ? ""
-          : "s"
+      `Please answer all questions before submitting. ${unanswered.length} question${unanswered.length === 1
+        ? ""
+        : "s"
       } remaining.`,
       400,
       "INCOMPLETE_ASSESSMENT",
@@ -2346,9 +2379,9 @@ export async function getPsychometricResult(
     attempt.questions.filter(
       (item) =>
         item.selectedOption !==
-          null ||
+        null ||
         item.likertValue !==
-          null
+        null
     ).length;
 
   const unanswered =
@@ -2399,12 +2432,12 @@ export async function getPsychometricResult(
               percentage:
                 item.maxScore
                   ? Number(
-                      (
-                        ((item.score || 0) /
-                          item.maxScore) *
-                        100
-                      ).toFixed(2)
-                    )
+                    (
+                      ((item.score || 0) /
+                        item.maxScore) *
+                      100
+                    ).toFixed(2)
+                  )
                   : 0,
             })
           ),
@@ -2489,19 +2522,19 @@ export async function getPsychometricResult(
   const overallAverage =
     answeredLikert.length
       ? Number(
-          (
-            answeredLikert.reduce(
-              (
-                total,
-                item
-              ) =>
-                total +
-                (item.likertValue || 0),
-              0
-            ) /
-            answeredLikert.length
-          ).toFixed(2)
-        )
+        (
+          answeredLikert.reduce(
+            (
+              total,
+              item
+            ) =>
+              total +
+              (item.likertValue || 0),
+            0
+          ) /
+          answeredLikert.length
+        ).toFixed(2)
+      )
       : null;
 
   return {

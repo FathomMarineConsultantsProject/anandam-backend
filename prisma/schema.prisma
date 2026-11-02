@@ -79,6 +79,45 @@ enum JournalCustomBlockType {
   NOTE
 }
 
+enum TokenTransactionType {
+  CREDIT
+  DEBIT
+  REFUND
+  ADJUSTMENT
+}
+
+enum TokenTransactionSource {
+  ADMIN
+  FEATURE
+  REFUND
+  SYSTEM
+}
+
+enum PsychometricTestType {
+  MARITIME_HUMAN_PERFORMANCE
+  BIG_FIVE
+  PERSONALITY_16PF
+  MOTIVATION_VALUES
+}
+
+enum PsychometricQuestionType {
+  MULTIPLE_CHOICE
+  LIKERT_5
+}
+
+enum PsychometricAttemptStatus {
+  IN_PROGRESS
+  COMPLETED
+  ABANDONED
+  EXPIRED
+}
+
+enum PsychometricSectionCode {
+  PJS
+  PLA
+  SHF
+}
+
 // USERS
 model User {
   id           String   @id @default(uuid())
@@ -93,6 +132,9 @@ model User {
   contractStart DateTime?
   contractEnd   DateTime?
   homeCountry   String?
+
+  tokenWallet       TokenWallet?
+  tokenTransactions TokenTransaction[]
 
   // Contact details
   contactNumber String?
@@ -131,6 +173,9 @@ model User {
 
   // Journal
   journalEntries JournalEntry[]
+
+  // Psychometric assessments
+  psychometricAttempts PsychometricAttempt[]
 
   // Marketplace
   practitionerProfile  PractitionerProfile?
@@ -1405,4 +1450,234 @@ model JournalCustomBlock {
   updatedAt DateTime @updatedAt
 
   @@index([entryId, sortOrder])
+}
+
+model TokenWallet {
+  id      String @id @default(uuid())
+  userId  String @unique
+  balance Int    @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model TokenTransaction {
+  id String @id @default(uuid())
+
+  userId String
+
+  type   TokenTransactionType
+  source TokenTransactionSource
+
+  amount        Int
+  balanceBefore Int
+  balanceAfter  Int
+
+  featureKey  String?
+  referenceId String?
+  reason      String?
+
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([featureKey])
+  @@index([referenceId])
+}
+
+model PsychometricTest {
+  id String @id @default(uuid())
+
+  code String @unique
+
+  title       String
+  description String?
+
+  type PsychometricTestType @unique
+
+  firstAttemptFree Boolean @default(true)
+
+  repeatTokenCost Int @default(0)
+
+  isActive  Boolean @default(true)
+  sortOrder Int     @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  sections  PsychometricSection[]
+  questions PsychometricQuestion[]
+  attempts  PsychometricAttempt[]
+}
+
+model PsychometricSection {
+  id String @id @default(uuid())
+
+  testId String
+
+  code PsychometricSectionCode
+
+  title String
+
+  durationMinutes Int
+
+  questionsPerAttempt Int @default(6)
+
+  sortOrder Int
+
+  isLockedAfterSubmit Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  test PsychometricTest @relation(fields: [testId], references: [id], onDelete: Cascade)
+
+  questions PsychometricQuestion[]
+
+  attemptSections PsychometricAttemptSection[]
+
+  @@unique([testId, code])
+  @@index([testId, sortOrder])
+}
+
+model PsychometricQuestion {
+  id String @id @default(uuid())
+
+  testId String
+
+  sectionId String?
+
+  itemCode String? @unique
+
+  domain String?
+
+  competency String?
+
+  questionText String
+
+  questionType PsychometricQuestionType
+
+  optionA String?
+  optionB String?
+  optionC String?
+  optionD String?
+
+  correctOption String?
+
+  reverseScored Boolean @default(false)
+
+  traitKey String?
+
+  sortOrder Int @default(0)
+
+  isActive Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  test PsychometricTest @relation(fields: [testId], references: [id], onDelete: Cascade)
+
+  section PsychometricSection? @relation(fields: [sectionId], references: [id], onDelete: SetNull)
+
+  attemptQuestions PsychometricAttemptQuestion[]
+
+  @@index([testId])
+  @@index([sectionId])
+  @@index([domain])
+  @@index([traitKey])
+}
+
+model PsychometricAttempt {
+  id String @id @default(uuid())
+
+  userId String
+  testId String
+
+  attemptNumber Int
+
+  status PsychometricAttemptStatus @default(IN_PROGRESS)
+
+  tokenCost Int @default(0)
+
+  usedFreeAttempt Boolean @default(false)
+
+  startedAt DateTime @default(now())
+
+  completedAt DateTime?
+
+  score Int?
+
+  maxScore Int?
+
+  percentage Float?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  test PsychometricTest @relation(fields: [testId], references: [id], onDelete: Restrict)
+
+  sections PsychometricAttemptSection[]
+
+  questions PsychometricAttemptQuestion[]
+
+  @@unique([userId, testId, attemptNumber])
+  @@index([userId, testId])
+  @@index([status])
+}
+
+model PsychometricAttemptSection {
+  id String @id @default(uuid())
+
+  attemptId String
+  sectionId String
+
+  startedAt DateTime?
+
+  expiresAt DateTime?
+
+  submittedAt DateTime?
+
+  lockedAt DateTime?
+
+  score    Int?
+  maxScore Int?
+
+  attempt PsychometricAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+
+  section PsychometricSection @relation(fields: [sectionId], references: [id], onDelete: Restrict)
+
+  @@unique([attemptId, sectionId])
+}
+
+model PsychometricAttemptQuestion {
+  id String @id @default(uuid())
+
+  attemptId  String
+  questionId String
+
+  sectionCode PsychometricSectionCode?
+
+  questionOrder Int
+
+  selectedOption String?
+
+  likertValue Int?
+
+  answeredAt DateTime?
+
+  isCorrect Boolean?
+
+  pointsAwarded Int?
+
+  attempt PsychometricAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+
+  question PsychometricQuestion @relation(fields: [questionId], references: [id], onDelete: Restrict)
+
+  @@unique([attemptId, questionId])
+  @@index([attemptId, questionOrder])
 }

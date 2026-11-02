@@ -153,20 +153,92 @@ export async function startPsychometricAttemptController(
         req as AuthenticatedRequest
       );
 
+
     const code =
       asString(
         req.params.code
       );
 
-    const attempt =
+
+    // ==================================================
+    // Frontend sends:
+    //
+    // {}
+    //
+    // for normal start/check.
+    //
+    // Frontend sends:
+    //
+    // {
+    //   confirmTokenSpend: true
+    // }
+    //
+    // only after user presses "Use Tokens & Start".
+    // ==================================================
+
+    const confirmTokenSpend =
+      req.body?.confirmTokenSpend ===
+      true;
+
+
+    const result =
       await startPsychometricAttempt(
         userId,
-        code
+        code,
+        confirmTokenSpend
       );
 
+
+    // ==================================================
+    // TOKEN PAYMENT REQUIRED
+    // ==================================================
+
+    if (
+      "paymentRequired" in result &&
+      result.paymentRequired
+    ) {
+      return res.status(402).json({
+        message:
+          result.hasEnoughTokens
+            ? `${result.requiredTokens} tokens are required to start another attempt.`
+            : `You do not have enough tokens to start another attempt.`,
+
+        code:
+          "PAYMENT_REQUIRED",
+
+        paymentRequired:
+          true,
+
+        requiredTokens:
+          result.requiredTokens,
+
+        walletBalance:
+          result.walletBalance,
+
+        hasEnoughTokens:
+          result.hasEnoughTokens,
+
+        attemptNumber:
+          result.attemptNumber,
+
+        testCode:
+          result.testCode,
+
+        testTitle:
+          result.testTitle,
+      });
+    }
+
+
+    // ==================================================
+    // ATTEMPT CREATED OR EXISTING ATTEMPT RESUMED
+    // ==================================================
+
     return res.status(201).json({
-      attempt,
+      attempt:
+        result,
     });
+
   } catch (error) {
     next(error);
   }

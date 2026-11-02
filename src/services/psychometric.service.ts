@@ -2723,3 +2723,296 @@ export async function getPsychometricHistory(
       },
     });
 }
+
+// ======================================================
+// UNLOCK MARITIME CORRECT ANSWERS
+//
+// Cost: 1 token
+//
+// Important:
+// - only COMPLETED maritime assessments can be unlocked
+// - the same result is NEVER charged twice
+// - token debit + unlock transaction are atomic
+// - TokenTransaction acts as the persistent unlock record
+// ======================================================
+
+export async function unlockPsychometricAnswers(
+  userId: string,
+  attemptId: string
+) {
+  const UNLOCK_TOKEN_COST =
+    1;
+
+  const FEATURE_KEY =
+    "psychometric:correct-answers";
+
+
+  return prisma.$transaction(
+    async (tx) => {
+      const attempt =
+        await tx.psychometricAttempt
+          .findFirst({
+            where: {
+              id:
+                attemptId,
+
+              userId,
+
+              status:
+                PsychometricAttemptStatus.COMPLETED,
+            },
+
+            include: {
+              test:
+                true,
+
+              questions: {
+                include: {
+                  question:
+                    true,
+                },
+
+                orderBy: {
+                  questionOrder:
+                    "asc",
+                },
+              },
+            },
+          });
+
+
+      if (!attempt) {
+        throw new PsychometricError(
+          "Completed assessment result not found.",
+          404,
+          "RESULT_NOT_FOUND"
+        );
+      }
+
+
+      if (
+        attempt.test.type !==
+        PsychometricTestType.MARITIME_HUMAN_PERFORMANCE
+      ) {
+        throw new PsychometricError(
+          "Correct-answer unlocking is only available for the Maritime Human Performance assessment.",
+          400,
+          "ANSWER_UNLOCK_NOT_AVAILABLE"
+        );
+      }
+
+
+      // ==================================================
+      // CHECK WHETHER THIS RESULT WAS ALREADY UNLOCKED
+      // ==================================================
+
+      const existingUnlock =
+        await tx.tokenTransaction
+          .findFirst({
+            where: {
+              userId,
+
+              featureKey:
+                FEATURE_KEY,
+
+              referenceId:
+                attempt.id,
+
+              type:
+                TokenTransactionType.DEBIT,
+
+              source:
+                TokenTransactionSource.FEATURE,
+            },
+
+            orderBy: {
+              createdAt:
+                "desc",
+            },
+          });
+
+
+      // ==================================================
+      // CHARGE ONLY IF NOT ALREADY UNLOCKED
+      // ==================================================
+
+      if (
+        !existingUnlock
+      ) {
+        const wallet =
+          await tx.tokenWallet
+            .upsert({
+              where: {
+                userId,
+              },
+
+              update: {},
+
+              create: {
+                userId,
+
+                balance:
+                  0,
+              },
+            });
+
+
+        if (
+          wallet.balance <
+          UNLOCK_TOKEN_COST
+        ) {
+          throw new PsychometricError(
+            "Insufficient token balance. You need 1 token to unlock the correct answers.",
+            402,
+            "INSUFFICIENT_TOKENS",
+            {
+              requiredTokens:
+                UNLOCK_TOKEN_COST,
+
+              walletBalance:
+                wallet.balance,
+
+              hasEnoughTokens:
+                false,
+            }
+          );
+        }
+
+
+        const updatedWallet =
+          await tx.tokenWallet
+            .update({
+              where: {
+                userId,
+              },
+
+              data: {
+                balance: {
+                  decrement:
+                    UNLOCK_TOKEN_COST,
+                },
+              },
+            });
+
+
+        await tx.tokenTransaction
+          .create({
+            data: {
+              userId,
+
+              type:
+                TokenTransactionType.DEBIT,
+
+              source:
+                TokenTransactionSource.FEATURE,
+
+              amount:
+                UNLOCK_TOKEN_COST,
+
+              balanceBefore:
+                wallet.balance,
+
+              balanceAfter:
+                updatedWallet.balance,
+
+              featureKey:
+                FEATURE_KEY,
+
+              referenceId:
+                attempt.id,
+
+              reason:
+                "Unlock psychometric correct answers",
+            },
+          });
+      }
+
+
+      // ==================================================
+      // CURRENT BALANCE AFTER POSSIBLE DEBIT
+      // ==================================================
+
+      const currentWallet =
+        await tx.tokenWallet
+          .findUnique({
+            where: {
+              userId,
+            },
+          });
+
+
+      // ==================================================
+      // RETURN ANSWER REVIEW
+      // ==================================================
+
+      const answers =
+        attempt.questions.map(
+          (
+            item,
+            index
+          ) => ({
+            id:
+              item.id,
+
+            attemptQuestionId:
+              item.id,
+
+            questionId:
+              item.questionId,
+
+            questionNumber:
+              index + 1,
+
+            questionOrder:
+              item.questionOrder,
+
+            questionText:
+              item.question
+                .questionText,
+
+            selectedOption:
+              item.selectedOption,
+
+            correctOption:
+              item.question
+                .correctOption,
+
+            isCorrect:
+              item.isCorrect,
+          })
+        );
+
+
+      return {
+        answersUnlocked:
+          true,
+
+        correctAnswersUnlocked:
+          true,
+
+        answers,
+
+        answerReview:
+          answers,
+
+        tokenCost:
+          UNLOCK_TOKEN_COST,
+
+        tokenSpent:
+          existingUnlock
+            ? 0
+            : UNLOCK_TOKEN_COST,
+
+        alreadyUnlocked:
+          Boolean(
+            existingUnlock
+          ),
+
+        walletBalance:
+          currentWallet
+            ?.balance ??
+          0,
+      };
+    }
+  );
+}

@@ -264,7 +264,74 @@ app.use(
   videoCallRoutes
 );
 
+// ======================================================
+// GLOBAL ERROR HANDLER
+// Keep this AFTER all routes
+// ======================================================
 
+app.use(
+  (
+    error: any,
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+  ) => {
+    console.error(
+      "API ERROR:",
+      error
+    );
+
+    const statusCode =
+      Number(
+        error?.statusCode ||
+        error?.status ||
+        500
+      );
+
+    let code =
+      "INTERNAL_SERVER_ERROR";
+
+    if (statusCode === 400) {
+      code =
+        "BAD_REQUEST";
+    }
+
+    if (statusCode === 401) {
+      code =
+        "UNAUTHORIZED";
+    }
+
+    if (statusCode === 402) {
+      code =
+        "PAYMENT_REQUIRED";
+    }
+
+    if (statusCode === 403) {
+      code =
+        "FORBIDDEN";
+    }
+
+    if (statusCode === 404) {
+      code =
+        "NOT_FOUND";
+    }
+
+    if (statusCode === 409) {
+      code =
+        "CONFLICT";
+    }
+
+    return res
+      .status(statusCode)
+      .json({
+        message:
+          error?.message ||
+          "Something went wrong.",
+
+        code,
+      });
+  }
+);
 
 
 // ======================================================

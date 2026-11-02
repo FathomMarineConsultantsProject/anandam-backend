@@ -160,22 +160,6 @@ export async function startPsychometricAttemptController(
       );
 
 
-    // ==================================================
-    // Frontend sends:
-    //
-    // {}
-    //
-    // for normal start/check.
-    //
-    // Frontend sends:
-    //
-    // {
-    //   confirmTokenSpend: true
-    // }
-    //
-    // only after user presses "Use Tokens & Start".
-    // ==================================================
-
     const confirmTokenSpend =
       req.body?.confirmTokenSpend ===
       true;
@@ -190,55 +174,72 @@ export async function startPsychometricAttemptController(
 
 
     // ==================================================
-    // TOKEN PAYMENT REQUIRED
+    // TOKEN CONFIRMATION / INSUFFICIENT BALANCE
+    //
+    // No attempt has been created.
+    // No token has been deducted.
     // ==================================================
 
     if (
-      "paymentRequired" in result &&
+      "paymentRequired" in
+        result &&
       result.paymentRequired
     ) {
-      return res.status(402).json({
-        message:
-          result.hasEnoughTokens
-            ? `${result.requiredTokens} tokens are required to start another attempt.`
-            : `You do not have enough tokens to start another attempt.`,
+      return res
+        .status(402)
+        .json({
+          message:
+            result.hasEnoughTokens
+              ? `${result.requiredTokens} token${
+                  result.requiredTokens ===
+                  1
+                    ? ""
+                    : "s"
+                } required to start another attempt.`
+              : `Insufficient token balance. You need ${result.requiredTokens} token${
+                  result.requiredTokens ===
+                  1
+                    ? ""
+                    : "s"
+                } to start another attempt.`,
 
-        code:
-          "PAYMENT_REQUIRED",
+          code:
+            result.hasEnoughTokens
+              ? "TOKEN_CONFIRMATION_REQUIRED"
+              : "INSUFFICIENT_TOKENS",
 
-        paymentRequired:
-          true,
+          requiredTokens:
+            result.requiredTokens,
 
-        requiredTokens:
-          result.requiredTokens,
+          walletBalance:
+            result.walletBalance,
 
-        walletBalance:
-          result.walletBalance,
+          hasEnoughTokens:
+            result.hasEnoughTokens,
 
-        hasEnoughTokens:
-          result.hasEnoughTokens,
+          attemptNumber:
+            result.attemptNumber,
 
-        attemptNumber:
-          result.attemptNumber,
+          testCode:
+            result.testCode,
 
-        testCode:
-          result.testCode,
-
-        testTitle:
-          result.testTitle,
-      });
+          testTitle:
+            result.testTitle,
+        });
     }
 
 
     // ==================================================
-    // ATTEMPT CREATED OR EXISTING ATTEMPT RESUMED
+    // FREE ATTEMPT / CONFIRMED TOKEN ATTEMPT /
+    // EXISTING IN-PROGRESS ATTEMPT
     // ==================================================
 
-    return res.status(201).json({
-      attempt:
-        result,
-    });
-
+    return res
+      .status(201)
+      .json({
+        attempt:
+          result,
+      });
   } catch (error) {
     next(error);
   }

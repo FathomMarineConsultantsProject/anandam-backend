@@ -177,6 +177,8 @@ model User {
   // Psychometric assessments
   psychometricAttempts PsychometricAttempt[]
 
+  psychometricDisclaimerAcknowledgements PsychometricDisclaimerAcknowledgement[]
+
   // Marketplace
   practitionerProfile  PractitionerProfile?
   marketplaceEnquiries MarketplaceEnquiry[] @relation("EnquiryUser")
@@ -1511,6 +1513,8 @@ model PsychometricTest {
   sections  PsychometricSection[]
   questions PsychometricQuestion[]
   attempts  PsychometricAttempt[]
+
+  disclaimerAcknowledgements PsychometricDisclaimerAcknowledgement[]
 }
 
 model PsychometricSection {
@@ -1625,9 +1629,45 @@ model PsychometricAttempt {
 
   questions PsychometricAttemptQuestion[]
 
+  disclaimerAcknowledgement PsychometricDisclaimerAcknowledgement?
+
   @@unique([userId, testId, attemptNumber])
   @@index([userId, testId])
   @@index([status])
+}
+
+// ======================================================
+// PSYCHOMETRIC DISCLAIMER ACKNOWLEDGEMENT
+// ======================================================
+
+model PsychometricDisclaimerAcknowledgement {
+  id String @id @default(uuid())
+
+  userId    String
+  testId    String
+  attemptId String @unique
+
+  disclaimerVersion String @default("1.0")
+
+  presentedAt      DateTime?
+  canAcknowledgeAt DateTime?
+
+  accepted       Boolean   @default(false)
+  acknowledgedAt DateTime?
+
+  disclaimerTextSnapshot      String @db.Text
+  acknowledgementTextSnapshot String @db.Text
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  test PsychometricTest @relation(fields: [testId], references: [id], onDelete: Restrict)
+
+  attempt PsychometricAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, testId, acknowledgedAt])
 }
 
 model PsychometricAttemptSection {

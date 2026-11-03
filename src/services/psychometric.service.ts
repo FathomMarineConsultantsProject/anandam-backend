@@ -12,6 +12,36 @@ import {
 
 const prisma =
   new PrismaClient();
+  // ======================================================
+// ASSESSMENT DISCLAIMER
+// ======================================================
+
+const PSYCHOMETRIC_DISCLAIMER_VERSION =
+  "1.0";
+
+const PSYCHOMETRIC_DISCLAIMER_WAIT_SECONDS =
+  45;
+
+const PSYCHOMETRIC_DISCLAIMER_TITLE =
+  "Important Disclaimer - Not a clinical diagnosis";
+
+const PSYCHOMETRIC_DISCLAIMER_TEXT = `
+This assessment is intended for self-awareness and personal development only.
+
+Your results are based on the responses you provide and reflect your reported state at the time of the assessment. They are indicative and informational, not diagnostic.
+
+This assessment does not constitute a medical, psychological, or psychiatric diagnosis and is not a substitute for evaluation by a qualified professional.
+
+The results should not be used as the sole basis for employment, promotion, disciplinary, medical, or other high-stakes decisions.
+
+Fathom Marine Consultants and Anandüm by Fathom do not guarantee the accuracy, completeness, or suitability of the results for any particular purpose and, to the fullest extent permitted by law, accept no liability for decisions or actions taken solely on the basis of these results.
+`.trim();
+
+const PSYCHOMETRIC_ACKNOWLEDGEMENT_TEXT = `
+I understand and acknowledge that this assessment is intended for indicative and informational purposes only, does not constitute a medical, psychological, or psychiatric diagnosis, and should not be relied upon as a substitute for professional evaluation.
+
+I confirm that I have read and understood the Assessment Disclaimer and Limitation of Liability.
+`.trim();
 
   
 export class PsychometricError
@@ -52,6 +82,97 @@ export class PsychometricError
   }
 }
 
+// ======================================================
+// DISCLAIMER HELPERS
+// ======================================================
+
+async function ensurePsychometricDisclaimerRecord(
+  userId: string,
+  attemptId: string
+) {
+  const attempt =
+    await prisma.psychometricAttempt.findFirst({
+      where: {
+        id: attemptId,
+        userId,
+      },
+
+      select: {
+        id: true,
+        testId: true,
+      },
+    });
+
+  if (!attempt) {
+    throw new PsychometricError(
+      "Assessment attempt not found.",
+      404,
+      "ATTEMPT_NOT_FOUND"
+    );
+  }
+
+  return prisma.psychometricDisclaimerAcknowledgement.upsert({
+    where: {
+      attemptId,
+    },
+
+    update: {},
+
+    create: {
+      userId,
+      testId:
+        attempt.testId,
+      attemptId:
+        attempt.id,
+
+      disclaimerVersion:
+        PSYCHOMETRIC_DISCLAIMER_VERSION,
+
+      disclaimerTextSnapshot:
+        PSYCHOMETRIC_DISCLAIMER_TEXT,
+
+      acknowledgementTextSnapshot:
+        PSYCHOMETRIC_ACKNOWLEDGEMENT_TEXT,
+    },
+  });
+}
+
+
+async function requirePsychometricDisclaimerAcknowledged(
+  userId: string,
+  attemptId: string
+) {
+  const acknowledgement =
+    await prisma.psychometricDisclaimerAcknowledgement.findFirst({
+      where: {
+        userId,
+        attemptId,
+        accepted: true,
+
+        acknowledgedAt: {
+          not: null,
+        },
+      },
+
+      select: {
+        id: true,
+        acknowledgedAt: true,
+      },
+    });
+
+  if (!acknowledgement) {
+    throw new PsychometricError(
+      "You must read and acknowledge the assessment disclaimer before beginning the assessment.",
+      403,
+      "DISCLAIMER_ACKNOWLEDGEMENT_REQUIRED",
+      {
+        attemptId,
+      }
+    );
+  }
+
+  return acknowledgement;
+}
 
 function shuffle<T>(
   items: T[]
@@ -1246,6 +1367,28 @@ export async function startPsychometricAttempt(
           });
 
 
+          await tx.psychometricDisclaimerAcknowledgement.create({
+  data: {
+    userId,
+
+    testId:
+      test.id,
+
+    attemptId:
+      created.id,
+
+    disclaimerVersion:
+      PSYCHOMETRIC_DISCLAIMER_VERSION,
+
+    disclaimerTextSnapshot:
+      PSYCHOMETRIC_DISCLAIMER_TEXT,
+
+    acknowledgementTextSnapshot:
+      PSYCHOMETRIC_ACKNOWLEDGEMENT_TEXT,
+  },
+});
+
+
         // =================================================
         // DEDUCT TOKENS
         //
@@ -1405,11 +1548,15 @@ export async function startPsychometricAttempt(
   );
 }
 
-
 export async function getPsychometricAttempt(
   userId: string,
   attemptId: string
 ) {
+  await ensurePsychometricDisclaimerRecord(
+    userId,
+    attemptId
+  );
+
   const attempt =
     await prisma.psychometricAttempt
       .findFirst({
@@ -1429,6 +1576,10 @@ export async function getPsychometricAttempt(
               },
             },
           },
+
+          disclaimerAcknowledgement:
+            true,
+
           sections: {
             include: {
               section:
@@ -1454,6 +1605,16 @@ export async function getPsychometricAttempt(
       404
     );
   }
+
+  const disclaimerAccepted =
+    Boolean(
+      attempt
+        .disclaimerAcknowledgement
+        ?.accepted &&
+      attempt
+        .disclaimerAcknowledgement
+        ?.acknowledgedAt
+    );
 
   const sections =
     [...attempt.sections]
@@ -1542,9 +1703,32 @@ export async function getPsychometricAttempt(
       type:
         attempt.test.type,
     },
+
+    requiresDisclaimer:
+      !disclaimerAccepted,
+
+    canBeginAssessment:
+      disclaimerAccepted,
+
+    disclaimer: {
+      required:
+        true,
+
+      accepted:
+        disclaimerAccepted,
+
+      acknowledgedAt:
+        attempt
+          .disclaimerAcknowledgement
+          ?.acknowledgedAt ??
+        null,
+    },
+
     sections,
+
     questions:
-      attempt.questions.map(
+      disclaimerAccepted
+        ? attempt.questions.map(
         (item) => {
           const safeQuestion =
             sanitizeQuestion(
@@ -1593,7 +1777,8 @@ export async function getPsychometricAttempt(
               safeQuestion,
           };
         }
-      ),
+      )
+        : [],
   };
 }
 
@@ -1603,6 +1788,11 @@ export async function startPsychometricSection(
   attemptId: string,
   sectionCode: PsychometricSectionCode
 ) {
+  await requirePsychometricDisclaimerAcknowledged(
+    userId,
+    attemptId
+  );
+
   const attempt =
     await prisma.psychometricAttempt
       .findFirst({
@@ -1896,6 +2086,11 @@ export async function savePsychometricAnswers(
   attemptId: string,
   answers: AnswerPayload[]
 ) {
+  await requirePsychometricDisclaimerAcknowledged(
+    userId,
+    attemptId
+  );
+
   const attempt =
     await prisma.psychometricAttempt
       .findFirst({
@@ -2153,6 +2348,11 @@ export async function submitPsychometricSection(
   attemptId: string,
   sectionCode: PsychometricSectionCode
 ) {
+  await requirePsychometricDisclaimerAcknowledged(
+    userId,
+    attemptId
+  );
+
   return prisma.$transaction(
     async (tx) => {
       const attempt =
@@ -2372,6 +2572,11 @@ export async function submitPsychometricAttempt(
   userId: string,
   attemptId: string
 ) {
+  await requirePsychometricDisclaimerAcknowledged(
+    userId,
+    attemptId
+  );
+
   const attempt =
     await prisma.psychometricAttempt
       .findFirst({
@@ -3146,4 +3351,237 @@ export async function unlockPsychometricAnswers(
       };
     }
   );
+}
+
+// ======================================================
+// GET / PRESENT DISCLAIMER
+// ======================================================
+
+export async function getPsychometricDisclaimer(
+  userId: string,
+  attemptId: string
+) {
+  let acknowledgement =
+    await ensurePsychometricDisclaimerRecord(
+      userId,
+      attemptId
+    );
+
+  // Start the 45-second reading period only when
+  // the disclaimer is actually shown for the first time.
+  if (
+    !acknowledgement.presentedAt ||
+    !acknowledgement.canAcknowledgeAt
+  ) {
+    const presentedAt =
+      new Date();
+
+    const canAcknowledgeAt =
+      new Date(
+        presentedAt.getTime() +
+          PSYCHOMETRIC_DISCLAIMER_WAIT_SECONDS *
+            1000
+      );
+
+    acknowledgement =
+      await prisma.psychometricDisclaimerAcknowledgement.update({
+        where: {
+          attemptId,
+        },
+
+        data: {
+          presentedAt,
+          canAcknowledgeAt,
+        },
+      });
+  }
+
+  const serverTime =
+    new Date();
+
+  const secondsRemaining =
+    acknowledgement.accepted
+      ? 0
+      : Math.max(
+          0,
+          Math.ceil(
+            (
+              acknowledgement.canAcknowledgeAt!.getTime() -
+              serverTime.getTime()
+            ) / 1000
+          )
+        );
+
+  return {
+    attemptId,
+
+    title:
+      PSYCHOMETRIC_DISCLAIMER_TITLE,
+
+    disclaimerVersion:
+      acknowledgement.disclaimerVersion,
+
+    disclaimerText:
+      acknowledgement.disclaimerTextSnapshot,
+
+    acknowledgementText:
+      acknowledgement.acknowledgementTextSnapshot,
+
+    presentedAt:
+      acknowledgement.presentedAt,
+
+    canAcknowledgeAt:
+      acknowledgement.canAcknowledgeAt,
+
+    acknowledgedAt:
+      acknowledgement.acknowledgedAt,
+
+    accepted:
+      acknowledgement.accepted,
+
+    serverTime,
+
+    secondsRemaining,
+
+    canAcknowledge:
+      !acknowledgement.accepted &&
+      secondsRemaining === 0,
+
+    canBeginAssessment:
+      acknowledgement.accepted &&
+      Boolean(
+        acknowledgement.acknowledgedAt
+      ),
+  };
+}
+
+// ======================================================
+// ACKNOWLEDGE DISCLAIMER
+// ======================================================
+
+export async function acknowledgePsychometricDisclaimer(
+  userId: string,
+  attemptId: string
+) {
+  let acknowledgement =
+    await ensurePsychometricDisclaimerRecord(
+      userId,
+      attemptId
+    );
+
+  // Idempotent.
+  // If already accepted, do NOT create another acknowledgement
+  // for the same attempt.
+  if (
+    acknowledgement.accepted &&
+    acknowledgement.acknowledgedAt
+  ) {
+    return {
+      attemptId,
+
+      accepted: true,
+
+      acknowledgedAt:
+        acknowledgement.acknowledgedAt,
+
+      alreadyAcknowledged:
+        true,
+
+      canBeginAssessment:
+        true,
+    };
+  }
+
+  // If somebody directly calls the acknowledge endpoint
+  // without ever opening the disclaimer screen,
+  // start the timer here and reject the acknowledgement.
+  if (
+    !acknowledgement.presentedAt ||
+    !acknowledgement.canAcknowledgeAt
+  ) {
+    const presentedAt =
+      new Date();
+
+    const canAcknowledgeAt =
+      new Date(
+        presentedAt.getTime() +
+          PSYCHOMETRIC_DISCLAIMER_WAIT_SECONDS *
+            1000
+      );
+
+    acknowledgement =
+      await prisma.psychometricDisclaimerAcknowledgement.update({
+        where: {
+          attemptId,
+        },
+
+        data: {
+          presentedAt,
+          canAcknowledgeAt,
+        },
+      });
+  }
+
+  const now =
+    new Date();
+
+  if (
+    now.getTime() <
+    acknowledgement.canAcknowledgeAt!.getTime()
+  ) {
+    const secondsRemaining =
+      Math.max(
+        1,
+        Math.ceil(
+          (
+            acknowledgement.canAcknowledgeAt!.getTime() -
+            now.getTime()
+          ) / 1000
+        )
+      );
+
+    throw new PsychometricError(
+      `Please review the disclaimer before continuing. ${secondsRemaining} second${
+        secondsRemaining === 1
+          ? ""
+          : "s"
+      } remaining.`,
+      409,
+      "DISCLAIMER_WAIT_REQUIRED",
+      {
+        secondsRemaining,
+        canAcknowledgeAt:
+          acknowledgement.canAcknowledgeAt,
+      }
+    );
+  }
+
+  const updated =
+    await prisma.psychometricDisclaimerAcknowledgement.update({
+      where: {
+        attemptId,
+      },
+
+      data: {
+        accepted: true,
+        acknowledgedAt:
+          now,
+      },
+    });
+
+  return {
+    attemptId,
+
+    accepted:
+      updated.accepted,
+
+    acknowledgedAt:
+      updated.acknowledgedAt,
+
+    alreadyAcknowledged:
+      false,
+
+    canBeginAssessment:
+      true,
+  };
 }

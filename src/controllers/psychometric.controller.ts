@@ -9,7 +9,9 @@ import {
 } from "@prisma/client";
 
 import {
+  acknowledgePsychometricDisclaimer,
   getPsychometricAttempt,
+  getPsychometricDisclaimer,
   getPsychometricHistory,
   getPsychometricResult,
   getPsychometricTest,
@@ -240,6 +242,89 @@ export async function startPsychometricAttemptController(
       .json({
         attempt:
           result,
+      });
+  } catch (error) {
+    next(error);
+  }
+}
+
+
+// ======================================================
+// DISCLAIMER
+// ======================================================
+
+export async function getPsychometricDisclaimerController(
+  req: Request,
+  res: Response,
+  next: NextFunction
+) {
+  try {
+    const userId =
+      requireUserId(
+        req as AuthenticatedRequest
+      );
+
+    const attemptId =
+      asString(
+        req.params.attemptId
+      );
+
+    const disclaimer =
+      await getPsychometricDisclaimer(
+        userId,
+        attemptId
+      );
+
+    return res
+      .status(200)
+      .json({
+        disclaimer,
+      });
+  } catch (error) {
+    next(error);
+  }
+}
+
+
+export async function acknowledgePsychometricDisclaimerController(
+  req: Request,
+  res: Response,
+  next: NextFunction
+) {
+  try {
+    const userId =
+      requireUserId(
+        req as AuthenticatedRequest
+      );
+
+    const attemptId =
+      asString(
+        req.params.attemptId
+      );
+
+    if (
+      req.body?.accepted !== true
+    ) {
+      return res
+        .status(400)
+        .json({
+          message:
+            "You must confirm that you have read and understood the disclaimer.",
+          code:
+            "DISCLAIMER_ACCEPTANCE_REQUIRED",
+        });
+    }
+
+    const acknowledgement =
+      await acknowledgePsychometricDisclaimer(
+        userId,
+        attemptId
+      );
+
+    return res
+      .status(200)
+      .json({
+        acknowledgement,
       });
   } catch (error) {
     next(error);

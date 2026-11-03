@@ -5,7 +5,9 @@ import {
 } from "../middleware/auth.middleware";
 
 import {
+  acknowledgePsychometricDisclaimerController,
   getPsychometricAttemptController,
+  getPsychometricDisclaimerController,
   getPsychometricHistoryController,
   getPsychometricResultController,
   getPsychometricTestController,
@@ -54,6 +56,21 @@ router.post(
 
 
 // ======================================================
+// DISCLAIMER / ACKNOWLEDGEMENT
+// ======================================================
+
+router.get(
+  "/attempts/:attemptId/disclaimer",
+  getPsychometricDisclaimerController
+);
+
+router.post(
+  "/attempts/:attemptId/disclaimer/acknowledge",
+  acknowledgePsychometricDisclaimerController
+);
+
+
+// ======================================================
 // HISTORY
 // IMPORTANT: keep before /attempts/:attemptId
 // ======================================================
@@ -77,6 +94,7 @@ router.post(
   "/attempts/:attemptId/answers",
   savePsychometricAnswersController
 );
+
 
 // ======================================================
 // UNLOCK CORRECT ANSWERS

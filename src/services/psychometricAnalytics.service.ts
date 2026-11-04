@@ -7,6 +7,12 @@ import {
 } from "@prisma/client";
 
 import {
+  getMaritimeCapabilityResult,
+  getMaritimeOverallResult,
+  readableSubskill,
+} from "./psychometricResultRules";
+
+import {
   PsychometricError,
 } from "./psychometric.service";
 
@@ -28,6 +34,15 @@ const LIKERT_LABELS:
   5: "Strongly Agree",
 };
 
+
+/* ======================================================
+   PROFILE DIMENSION DEFINITIONS
+
+   IMPORTANT:
+   These are deliberately retained so the existing
+   Personality / Behaviour / Motivation result logic
+   is NOT broken by the Maritime analytics change.
+   ====================================================== */
 
 type DimensionDefinition = {
   label: string;
@@ -54,6 +69,7 @@ const BIG_FIVE_DIMENSIONS:
       "Enjoys new ideas, unfamiliar perspectives and experimentation.",
   },
 
+
   CONSCIENTIOUSNESS: {
     label:
       "Conscientiousness",
@@ -64,6 +80,7 @@ const BIG_FIVE_DIMENSIONS:
     description:
       "Shows planning, reliability, persistence and organization.",
   },
+
 
   EXTRAVERSION: {
     label:
@@ -76,6 +93,7 @@ const BIG_FIVE_DIMENSIONS:
       "Reflects comfort with social interaction, expression and active engagement.",
   },
 
+
   AGREEABLENESS: {
     label:
       "Agreeableness",
@@ -86,6 +104,7 @@ const BIG_FIVE_DIMENSIONS:
     description:
       "Emphasizes cooperation, empathy, trust and support.",
   },
+
 
   EMOTIONAL_STABILITY: {
     label:
@@ -116,6 +135,7 @@ const BEHAVIOURAL_DIMENSIONS:
       "Reflects preference for logic, evidence and structured problem solving.",
   },
 
+
   ASSERTIVE_COMMUNICATION: {
     label:
       "Assertive Communication",
@@ -126,6 +146,7 @@ const BEHAVIOURAL_DIMENSIONS:
     description:
       "Reflects comfort speaking up, expressing views and communicating publicly.",
   },
+
 
   RESERVED_EXPRESSION: {
     label:
@@ -138,6 +159,7 @@ const BEHAVIOURAL_DIMENSIONS:
       "Reflects preference for lower-profile interaction and keeping personal feelings private.",
   },
 
+
   STRUCTURE_ORIENTATION: {
     label:
       "Structure Orientation",
@@ -148,6 +170,7 @@ const BEHAVIOURAL_DIMENSIONS:
     description:
       "Reflects preference for established procedures, consistency and proven methods.",
   },
+
 
   ADAPTABILITY: {
     label:
@@ -160,6 +183,7 @@ const BEHAVIOURAL_DIMENSIONS:
       "Reflects comfort adjusting to change and working when conditions are less predictable.",
   },
 
+
   DECISIVENESS_INITIATIVE: {
     label:
       "Decisiveness & Initiative",
@@ -170,6 +194,7 @@ const BEHAVIOURAL_DIMENSIONS:
     description:
       "Reflects willingness to make considered decisions and take initiative when direction is needed.",
   },
+
 
   SENSITIVITY_REFLECTION: {
     label:
@@ -182,6 +207,7 @@ const BEHAVIOURAL_DIMENSIONS:
       "Reflects attention to experiences, ideas, meaning and surrounding influences.",
   },
 
+
   FOCUS_RESILIENCE: {
     label:
       "Focus & Resilience",
@@ -193,6 +219,7 @@ const BEHAVIOURAL_DIMENSIONS:
       "Reflects ability to maintain focus and recover from distracting or critical situations.",
   },
 
+
   SOCIAL_INSIGHT_DIPLOMACY: {
     label:
       "Social Insight & Diplomacy",
@@ -203,6 +230,7 @@ const BEHAVIOURAL_DIMENSIONS:
     description:
       "Reflects interest in understanding others while remaining respectful during disagreement.",
   },
+
 
   INDEPENDENT_JUDGEMENT: {
     label:
@@ -233,6 +261,7 @@ const MOTIVATION_DIMENSIONS:
       "Motivated by advancement, challenging goals, recognition and opportunities to improve.",
   },
 
+
   AUTONOMY_LEADERSHIP: {
     label:
       "Autonomy & Leadership",
@@ -243,6 +272,7 @@ const MOTIVATION_DIMENSIONS:
     description:
       "Values independence, responsibility, influence and opportunities to lead.",
   },
+
 
   COLLABORATION_RELATIONSHIPS: {
     label:
@@ -255,6 +285,7 @@ const MOTIVATION_DIMENSIONS:
       "Values supportive relationships, mentoring and shared team success.",
   },
 
+
   STABILITY_WELLBEING: {
     label:
       "Stability & Wellbeing",
@@ -265,6 +296,7 @@ const MOTIVATION_DIMENSIONS:
     description:
       "Values security, clear expectations, balance and organizational support for wellbeing.",
   },
+
 
   PURPOSE_ETHICS: {
     label:
@@ -279,12 +311,23 @@ const MOTIVATION_DIMENSIONS:
 };
 
 
+/* ======================================================
+   EXISTING PROFILE HELPERS
+
+   Kept intentionally.
+
+   This means Personality / Behaviour / Motivation
+   continue producing the same result structure that
+   your existing FE already understands.
+   ====================================================== */
+
 function round(
   value: number,
   digits = 2
 ) {
   const multiplier =
     10 ** digits;
+
 
   return Math.round(
     value *
@@ -319,6 +362,7 @@ function humanizeKey(
     return "Other";
   }
 
+
   return value
     .replace(
       /_/g,
@@ -327,7 +371,9 @@ function humanizeKey(
     .toLowerCase()
     .replace(
       /\b\w/g,
-      (character) =>
+      (
+        character
+      ) =>
         character.toUpperCase()
     );
 }
@@ -337,14 +383,13 @@ function likertPercentage(
   average: number
 ) {
   /*
-    Likert values are 1-5.
+    Existing profile calculation:
 
     1 -> 0%
     3 -> 50%
     5 -> 100%
 
-    This is a profile index,
-    NOT a correct/wrong score.
+    This is NOT a right/wrong score.
   */
 
   return round(
@@ -375,12 +420,14 @@ function dimensionLevel(
     return "Highly Pronounced";
   }
 
+
   if (
     percentage >=
     65
   ) {
     return "Strong";
   }
+
 
   if (
     percentage >=
@@ -389,6 +436,7 @@ function dimensionLevel(
     return "Balanced";
   }
 
+
   if (
     percentage >=
     30
@@ -396,35 +444,8 @@ function dimensionLevel(
     return "Moderate";
   }
 
+
   return "Less Pronounced";
-}
-
-
-function maritimePerformanceBand(
-  percentage: number
-) {
-  if (
-    percentage >=
-    85
-  ) {
-    return "Very Strong";
-  }
-
-  if (
-    percentage >=
-    70
-  ) {
-    return "Strong";
-  }
-
-  if (
-    percentage >=
-    55
-  ) {
-    return "Developing";
-  }
-
-  return "Needs Further Development";
 }
 
 
@@ -438,11 +459,14 @@ function getDimensionDefinitions(
     case PsychometricTestType.BIG_FIVE:
       return BIG_FIVE_DIMENSIONS;
 
+
     case PsychometricTestType.PERSONALITY_16PF:
       return BEHAVIOURAL_DIMENSIONS;
 
+
     case PsychometricTestType.MOTIVATION_VALUES:
       return MOTIVATION_DIMENSIONS;
+
 
     default:
       return {};
@@ -478,6 +502,7 @@ function buildLikertHeadline(
 
   const first =
     dimensions[0];
+
 
   const second =
     dimensions[1];
@@ -531,7 +556,9 @@ function buildLikertSummary(
         2
       )
       .map(
-        (dimension) =>
+        (
+          dimension
+        ) =>
           dimension.label
       )
       .join(
@@ -568,117 +595,9 @@ function buildLikertSummary(
 }
 
 
-function buildMaritimeGroup(
-  questions: any[],
-  field:
-    | "domain"
-    | "competency"
-) {
-  const groups =
-    new Map<
-      string,
-      {
-        correct: number;
-        total: number;
-      }
-    >();
-
-
-  for (
-    const item
-    of questions
-  ) {
-    const key =
-      item
-        .question[
-        field
-      ] ||
-      "Other";
-
-
-    const current =
-      groups.get(
-        key
-      ) || {
-        correct: 0,
-        total: 0,
-      };
-
-
-    current.total +=
-      1;
-
-
-    if (
-      item.isCorrect ===
-      true
-    ) {
-      current.correct +=
-        1;
-    }
-
-
-    groups.set(
-      key,
-      current
-    );
-  }
-
-
-  return Array.from(
-    groups.entries()
-  )
-    .map(
-      ([
-        key,
-        values,
-      ]) => {
-        const percentage =
-          values.total
-            ? round(
-                (
-                  values.correct /
-                  values.total
-                ) *
-                  100,
-                1
-              )
-            : 0;
-
-
-        return {
-          key,
-
-          label:
-            humanizeKey(
-              key
-            ),
-
-          score:
-            values.correct,
-
-          maxScore:
-            values.total,
-
-          percentage,
-
-          level:
-            maritimePerformanceBand(
-              percentage
-            ),
-        };
-      }
-    )
-    .sort(
-      (
-        left,
-        right
-      ) =>
-        right.percentage -
-        left.percentage
-    );
-}
-
+/* ======================================================
+   TOKEN ANSWER-UNLOCK CHECK
+   ====================================================== */
 
 async function correctAnswersAreUnlocked(
   userId: string,
@@ -716,6 +635,10 @@ async function correctAnswersAreUnlocked(
   );
 }
 
+
+/* ======================================================
+   MAIN ANALYTICS SERVICE
+   ====================================================== */
 
 export async function getPsychometricAnalysis(
   userId: string,
@@ -856,9 +779,18 @@ export async function getPsychometricAnalysis(
   };
 
 
-  // =====================================================
-  // MARITIME HUMAN PERFORMANCE
-  // =====================================================
+  /* ====================================================
+     MARITIME HUMAN PERFORMANCE
+
+     Existing score + section flow is preserved.
+
+     NEW:
+     Separate user-facing capabilities are added for the
+     analytics screen.
+
+     Internal domain codes such as PJSD / PLSC are not
+     used as the main analytics labels.
+     ==================================================== */
 
   if (
     attempt.test.type ===
@@ -871,12 +803,51 @@ export async function getPsychometricAnalysis(
       );
 
 
-    const percentage =
+    const correct =
       Number(
-        attempt.percentage ??
+        attempt.score ??
         0
       );
 
+
+    const total =
+      Number(
+        attempt.maxScore ??
+        attempt.questions.length
+      );
+
+
+    const percentage =
+      Number(
+        attempt.percentage ??
+        (
+          total >
+          0
+            ? (
+                correct /
+                total
+              ) *
+              100
+            : 0
+        )
+      );
+
+
+    const overall =
+      getMaritimeOverallResult(
+        correct
+      );
+
+
+    /* ==================================================
+       KEEP EXISTING SCORE BREAKDOWN
+
+       PJS = Pre-Joining
+       PLA = Leadership
+       SHF = Safety & Human Factors
+
+       This avoids breaking the score UI you already like.
+       ================================================== */
 
     const sections =
       [...attempt.sections]
@@ -891,18 +862,22 @@ export async function getPsychometricAnalysis(
               .sortOrder
         )
         .map(
-          (item) => {
+          (
+            item
+          ) => {
             const maxScore =
               Number(
                 item.maxScore ??
                 0
               );
 
+
             const score =
               Number(
                 item.score ??
                 0
               );
+
 
             const sectionPercentage =
               maxScore >
@@ -912,20 +887,31 @@ export async function getPsychometricAnalysis(
                       score /
                       maxScore
                     ) *
-                      100,
+                    100,
                     1
                   )
                 : 0;
 
 
+            const capability =
+              getMaritimeCapabilityResult(
+                String(
+                  item.section.code
+                ),
+                score
+              );
+
+
             return {
+              /*
+                Existing fields
+              */
+
               code:
-                item.section
-                  .code,
+                item.section.code,
 
               title:
-                item.section
-                  .title,
+                item.section.title,
 
               score,
 
@@ -935,87 +921,285 @@ export async function getPsychometricAnalysis(
                 sectionPercentage,
 
               level:
-                maritimePerformanceBand(
-                  sectionPercentage
-                ),
+                capability.band,
+
+
+              /*
+                Additional analytics fields.
+
+                These do not remove or rename
+                any old fields.
+              */
+
+              capabilityKey:
+                capability.key,
+
+              capabilityLabel:
+                capability.label,
+
+              resultTitle:
+                capability.resultTitle,
+
+              resultText:
+                capability.resultText,
             };
           }
         );
 
 
-    const domains =
-      buildMaritimeGroup(
-        attempt.questions,
-        "domain"
+    /* ==================================================
+       USER-FACING MARITIME CAPABILITY ANALYTICS
+       ================================================== */
+
+    const capabilities =
+      sections.map(
+        (
+          section
+        ) => {
+          const capability =
+            getMaritimeCapabilityResult(
+              String(
+                section.code
+              ),
+              section.score
+            );
+
+
+          return {
+            key:
+              capability.key,
+
+            code:
+              section.code,
+
+            label:
+              capability.label,
+
+            title:
+              capability.label,
+
+            score:
+              capability.score,
+
+            maxScore:
+              capability.maxScore,
+
+            percentage:
+              capability.percentage,
+
+            band:
+              capability.band,
+
+            level:
+              capability.level,
+
+            resultTitle:
+              capability.resultTitle,
+
+            resultText:
+              capability.resultText,
+          };
+        }
       );
 
 
-    const competencies =
-      buildMaritimeGroup(
-        attempt.questions,
-        "competency"
+    const sortedCapabilities =
+      [...capabilities].sort(
+        (
+          first,
+          second
+        ) =>
+          second.percentage -
+          first.percentage
       );
 
 
-    const strongest =
-      domains
-        .slice(
-          0,
-          3
+    const strongestCapability =
+      sortedCapabilities[0] ??
+      null;
+
+
+    const developmentCapability =
+      [...capabilities]
+        .sort(
+          (
+            first,
+            second
+          ) =>
+            first.percentage -
+            second.percentage
+        )[0] ??
+      null;
+
+
+    /* ==================================================
+       USER-READABLE SUBSKILL CHIPS
+
+       Internal shorthand codes are discarded by
+       readableSubskill().
+       ================================================== */
+
+    const strengthSet =
+      new Set<string>();
+
+
+    const developmentSet =
+      new Set<string>();
+
+
+    for (
+      const item
+      of attempt.questions
+    ) {
+      const metadata =
+        item.question
+          .competency ||
+        item.question
+          .domain;
+
+
+      const readable =
+        readableSubskill(
+          metadata
         );
 
 
-    const development =
-      [...domains]
-        .sort(
+      if (!readable) {
+        continue;
+      }
+
+
+      if (
+        item.isCorrect ===
+        true
+      ) {
+        strengthSet.add(
+          readable
+        );
+      } else {
+        developmentSet.add(
+          readable
+        );
+      }
+    }
+
+
+    const strengthChips =
+      Array.from(
+        strengthSet
+      ).slice(
+        0,
+        6
+      );
+
+
+    const developmentPriorities =
+      Array.from(
+        developmentSet
+      ).slice(
+        0,
+        3
+      );
+
+
+    /* ==================================================
+       BACKWARDS-COMPATIBLE STRENGTHS / DEVELOPMENT AREAS
+
+       Existing FE/PDF code may already read:
+
+       analysis.strengths
+       analysis.developmentAreas
+
+       so keep these properties.
+       ================================================== */
+
+    const strengths =
+      sortedCapabilities
+        .filter(
           (
-            left,
-            right
+            capability
           ) =>
-            left.percentage -
-            right.percentage
+            capability.score >=
+            4
         )
         .slice(
           0,
-          Math.min(
-            2,
-            domains.length
-          )
+          3
+        )
+        .map(
+          (
+            capability
+          ) => ({
+            key:
+              capability.key,
+
+            title:
+              capability.label,
+
+            percentage:
+              capability.percentage,
+
+            text:
+              capability.resultText,
+
+            resultTitle:
+              capability.resultTitle,
+
+            level:
+              capability.band,
+          })
         );
 
 
-    const headline =
-      strongest.length
-        ? `Your strongest observed performance was in ${strongest
-            .slice(
-              0,
-              2
-            )
-            .map(
-              (item) =>
-                item.label
-            )
-            .join(
-              " and "
-            )}.`
-        : "Your Maritime Human Performance result is ready.";
+    const developmentAreas =
+      [...capabilities]
+        .filter(
+          (
+            capability
+          ) =>
+            capability.score <=
+            3
+        )
+        .sort(
+          (
+            first,
+            second
+          ) =>
+            first.percentage -
+            second.percentage
+        )
+        .slice(
+          0,
+          3
+        )
+        .map(
+          (
+            capability
+          ) => ({
+            key:
+              capability.key,
+
+            title:
+              capability.label,
+
+            percentage:
+              capability.percentage,
+
+            text:
+              capability.resultText,
+
+            resultTitle:
+              capability.resultTitle,
+
+            level:
+              capability.band,
+          })
+        );
 
 
-    const summary =
-      (
-        `You answered ${Number(
-          attempt.score ??
-          0
-        )} of ${Number(
-          attempt.maxScore ??
-          0
-        )} questions correctly, giving an overall result of ${round(
-          percentage,
-          1
-        )}%. ` +
-        "The domain and competency breakdown is intended to support reflection on relative strengths and development areas."
-      );
-
+    /* ==================================================
+       ANSWER REVIEW
+       ================================================== */
 
     const responses =
       attempt.questions.map(
@@ -1052,14 +1236,14 @@ export async function getPsychometricAnalysis(
 
           const correctOption =
             answersUnlocked
-              ? question
-                  .correctOption
+              ? question.correctOption
               : null;
 
 
           return {
             questionNumber:
-              index + 1,
+              index +
+              1,
 
             attemptQuestionId:
               item.id,
@@ -1070,14 +1254,16 @@ export async function getPsychometricAnalysis(
             itemCode:
               question.itemCode,
 
+            /*
+              Kept because existing FE may use it
+              to group answer-sheet questions.
+
+              It should NOT be rendered as a
+              user-facing capability label.
+            */
+
             sectionCode:
               item.sectionCode,
-
-            domain:
-              question.domain,
-
-            competency:
-              question.competency,
 
             questionText:
               question.questionText,
@@ -1112,7 +1298,9 @@ export async function getPsychometricAnalysis(
                   question.optionD,
               },
             ].filter(
-              (option) =>
+              (
+                option
+              ) =>
                 Boolean(
                   option.text
                 )
@@ -1124,7 +1312,7 @@ export async function getPsychometricAnalysis(
               selectedOption
                 ? optionMap[
                     selectedOption
-                  ] ||
+                  ] ??
                   null
                 : null,
 
@@ -1134,7 +1322,7 @@ export async function getPsychometricAnalysis(
               correctOption
                 ? optionMap[
                     correctOption
-                  ] ||
+                  ] ??
                   null
                 : null,
 
@@ -1150,19 +1338,14 @@ export async function getPsychometricAnalysis(
     return {
       ...common,
 
-      score: {
-        correct:
-          Number(
-            attempt.score ??
-            0
-          ),
+      /*
+        EXISTING score object preserved.
+      */
 
-        total:
-          Number(
-            attempt.maxScore ??
-            attempt.questions
-              .length
-          ),
+      score: {
+        correct,
+
+        total,
 
         percentage:
           round(
@@ -1170,75 +1353,112 @@ export async function getPsychometricAnalysis(
             1
           ),
 
+        /*
+          We improve only the descriptive label.
+        */
+
         level:
-          maritimePerformanceBand(
-            percentage
-          ),
+          overall.title,
+
+        band:
+          overall.title,
       },
+
+
+      /*
+        New detailed overall interpretation.
+      */
+
+      overall,
+
 
       answered:
         attempt.questions
           .filter(
-            (item) =>
+            (
+              item
+            ) =>
               Boolean(
                 item.selectedOption
               )
           )
           .length,
 
+
       unanswered:
         attempt.questions
           .filter(
-            (item) =>
+            (
+              item
+            ) =>
               !item.selectedOption
           )
           .length,
 
+
+      /*
+        EXISTING score-breakdown structure.
+      */
+
       sections,
 
-      domains,
 
-      competencies,
+      /*
+        NEW user-facing analytics structure.
+      */
+
+      capabilities,
+
 
       analysis: {
-        headline,
+        headline:
+          overall.title,
 
-        summary,
+        summary:
+          overall.summary,
 
-        strengths:
-          strongest.map(
-            (item) => ({
-              key:
-                item.key,
+        strongestCapability,
 
-              title:
-                item.label,
+        developmentCapability,
 
-              percentage:
-                item.percentage,
+        /*
+          Existing FE compatibility.
+        */
 
-              text:
-                `Observed performance in ${item.label} was ${item.percentage}%.`,
-            })
-          ),
+        strengths,
 
-        developmentAreas:
-          development.map(
-            (item) => ({
-              key:
-                item.key,
+        developmentAreas,
 
-              title:
-                item.label,
+        /*
+          Additional finer-detail information.
+        */
 
-              percentage:
-                item.percentage,
+        strengthChips,
 
-              text:
-                `This result suggests that ${item.label} may benefit from further reflection, practice or development.`,
-            })
-          ),
+        developmentPriorities,
       },
+
+
+      /*
+        Compatibility:
+        old analytics/report code may expect "domains".
+
+        We now supply readable capability objects instead
+        of internal PJSD/PLSC groups.
+      */
+
+      domains:
+        capabilities,
+
+
+      /*
+        Deliberately empty so internal competency codes
+        do not accidentally appear in the user result.
+      */
+
+      competencies:
+        [],
+
 
       answersUnlocked,
 
@@ -1250,9 +1470,19 @@ export async function getPsychometricAnalysis(
   }
 
 
-  // =====================================================
-  // PROFILE / LIKERT ANALYTICS
-  // =====================================================
+  /* ====================================================
+     PROFILE / LIKERT ANALYTICS
+
+     IMPORTANT:
+
+     This is intentionally the EXISTING behaviour used by:
+
+     - Personality Insights
+     - Behavioural Patterns
+     - Motivation & Values
+
+     No Maritime changes are allowed to alter this flow.
+     ==================================================== */
 
   const definitions =
     getDimensionDefinitions(
@@ -1297,6 +1527,10 @@ export async function getPsychometricAnalysis(
       );
 
 
+    /*
+      Existing reverse-scoring behaviour.
+    */
+
     const scoredValue =
       item.question
         .reverseScored
@@ -1337,7 +1571,8 @@ export async function getPsychometricAnalysis(
 
     responses.push({
       questionNumber:
-        index + 1,
+        index +
+        1,
 
       attemptQuestionId:
         item.id,
@@ -1404,6 +1639,10 @@ export async function getPsychometricAnalysis(
             ) /
             values.length;
 
+
+          /*
+            Existing calculation preserved.
+          */
 
           const percentage =
             likertPercentage(
@@ -1503,7 +1742,9 @@ export async function getPsychometricAnalysis(
             3
           )
           .map(
-            (dimension) => ({
+            (
+              dimension
+            ) => ({
               key:
                 dimension.key,
 
@@ -1545,7 +1786,9 @@ export async function getPsychometricAnalysis(
             )
           )
           .map(
-            (dimension) => ({
+            (
+              dimension
+            ) => ({
               key:
                 dimension.key,
 
@@ -1566,10 +1809,8 @@ export async function getPsychometricAnalysis(
     dimensions,
 
     /*
-      Deliberately NO overall percentage / pass / fail.
-
-      These are descriptive profile assessments,
-      not right/wrong tests.
+      Personality / Behaviour / Motivation
+      deliberately have no correct/wrong score.
     */
 
     score:

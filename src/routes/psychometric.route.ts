@@ -1,4 +1,5 @@
-import express from "express";
+import express
+  from "express";
 
 import {
   authenticateToken,
@@ -20,6 +21,11 @@ import {
   unlockPsychometricAnswersController,
 } from "../controllers/psychometric.controller";
 
+import {
+  downloadPsychometricReportController,
+  getPsychometricAnalysisController,
+} from "../controllers/psychometricAnalytics.controller";
+
 
 const router =
   express.Router();
@@ -38,6 +44,7 @@ router.get(
   "/tests",
   listPsychometricTestsController
 );
+
 
 router.get(
   "/tests/:code",
@@ -64,6 +71,7 @@ router.get(
   getPsychometricDisclaimerController
 );
 
+
 router.post(
   "/attempts/:attemptId/disclaimer/acknowledge",
   acknowledgePsychometricDisclaimerController
@@ -72,7 +80,9 @@ router.post(
 
 // ======================================================
 // HISTORY
-// IMPORTANT: keep before /attempts/:attemptId
+//
+// IMPORTANT:
+// keep before /attempts/:attemptId
 // ======================================================
 
 router.get(
@@ -89,6 +99,7 @@ router.get(
   "/attempts/:attemptId",
   getPsychometricAttemptController
 );
+
 
 router.post(
   "/attempts/:attemptId/answers",
@@ -115,6 +126,7 @@ router.post(
   startPsychometricSectionController
 );
 
+
 router.post(
   "/attempts/:attemptId/sections/:sectionCode/submit",
   submitPsychometricSectionController
@@ -132,12 +144,37 @@ router.post(
 
 
 // ======================================================
-// RESULT
+// CURRENT RAW RESULT
+//
+// Kept for backwards compatibility.
+// Existing FE continues working.
 // ======================================================
 
 router.get(
   "/attempts/:attemptId/result",
   getPsychometricResultController
+);
+
+
+// ======================================================
+// NEW ANALYTICAL RESULT
+//
+// Used by the new Figma result screen.
+// ======================================================
+
+router.get(
+  "/attempts/:attemptId/analysis",
+  getPsychometricAnalysisController
+);
+
+
+// ======================================================
+// PDF REPORT
+// ======================================================
+
+router.get(
+  "/attempts/:attemptId/report.pdf",
+  downloadPsychometricReportController
 );
 
 

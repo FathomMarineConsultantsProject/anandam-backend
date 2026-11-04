@@ -179,6 +179,62 @@ export async function downloadPsychometricReportController(
       );
 
 
+    /*
+      =====================================================
+      FRONTEND JSON DOWNLOAD MODE
+
+      Your normal frontend API client already handles
+      authenticated JSON requests.
+
+      Calling:
+
+      /report.pdf?format=base64
+
+      returns the PDF as base64 JSON so the frontend can
+      download it while still sending the Bearer token.
+
+      Normal /report.pdf still returns a real binary PDF.
+      =====================================================
+    */
+
+    const format =
+      String(
+        req.query
+          ?.format ||
+        ""
+      )
+        .trim()
+        .toLowerCase();
+
+
+    if (
+      format ===
+      "base64"
+    ) {
+      return res
+        .status(200)
+        .json({
+          report: {
+            filename:
+              report.filename,
+
+            contentType:
+              "application/pdf",
+
+            base64:
+              report.buffer
+                .toString(
+                  "base64"
+                ),
+          },
+        });
+    }
+
+
+    // =====================================================
+    // NORMAL BINARY PDF RESPONSE
+    // =====================================================
+
     res.setHeader(
       "Content-Type",
       "application/pdf"
@@ -201,9 +257,7 @@ export async function downloadPsychometricReportController(
 
 
     return res
-      .status(
-        200
-      )
+      .status(200)
       .send(
         report.buffer
       );

@@ -111,51 +111,262 @@ const BIG_FIVE = [
 ] as const;
 
 
-const BEHAVIOURAL = [
-  "I enjoy solving complex problems that require logical thinking.",
-  "I speak up confidently when I disagree with someone.",
-  "I prefer working behind the scenes rather than being the center of attention.",
-  "I follow established rules and procedures even when they make a task slower.",
-  "I adapt quickly when unexpected changes occur.",
-  "I rely more on facts and evidence than intuition when making important decisions.",
-  "I am comfortable making calculated decisions when all the information is not available.",
-  "I am strongly affected by art, music, creativity, or beautiful surroundings.",
-  "I usually keep my personal feelings private.",
-  "I often think deeply about the reasons behind events and experiences.",
-  "I feel comfortable speaking or presenting in front of a large audience.",
-  "I prefer proven and traditional methods over completely new approaches.",
-  "I naturally take charge when a group lacks clear direction.",
-  "I can become distracted when there is noise or activity around me.",
-  "I enjoy understanding the motives behind people's behaviour.",
-  "I remain polite and respectful even when I am frustrated or disagree strongly.",
-  "I prefer completing important tasks independently rather than depending heavily on others.",
-  "I am comfortable questioning existing rules or authority when I believe improvement is needed.",
-  "Criticism of my work or ideas can affect me strongly.",
-  "I prefer a predictable routine rather than frequent unexpected changes.",
+type LikertDimensionSeed = readonly [
+  itemCode: string,
+  questionText: string,
+  traitKey: string,
+  reverseScored: boolean
 ];
 
 
-const MOTIVATION_VALUES = [
-  "Opportunities for career advancement strongly motivate me.",
-  "I feel most satisfied when I achieve challenging goals.",
-  "Recognition for good performance is important to me.",
-  "I actively seek constructive feedback that can help me improve.",
-  "I perform best when I have freedom in deciding how to complete my work.",
-  "I am motivated by opportunities to lead teams or projects.",
-  "Having influence over important organizational decisions is important to me.",
-  "I prefer taking personal responsibility for both the success and failure of my work.",
-  "Working in a supportive and friendly team environment is important to me.",
-  "I find satisfaction in mentoring, supporting, or developing other people.",
-  "I prefer working toward shared team goals rather than competing only for individual success.",
-  "Building positive relationships with colleagues is important to my job satisfaction.",
-  "Job security is more important to me than the possibility of earning unpredictable financial rewards.",
-  "Maintaining a healthy balance between my work and personal life is important to me.",
-  "I work best when my responsibilities and expectations are clearly defined.",
-  "I value organizations that actively support employee health and well-being.",
-  "I find it easier to stay engaged when I believe in the ethical values of the organization.",
-  "Knowing that my work creates a positive impact motivates me.",
-  "I value organizations that contribute positively to society and the environment.",
-  "I am sometimes willing to give up personal benefits when doing so creates a greater benefit for others.",
+const BEHAVIOURAL: readonly LikertDimensionSeed[] = [
+  [
+    "BP-01",
+    "I enjoy solving complex problems that require logical thinking.",
+    "ANALYTICAL_THINKING",
+    false,
+  ],
+  [
+    "BP-02",
+    "I speak up confidently when I disagree with someone.",
+    "ASSERTIVE_COMMUNICATION",
+    false,
+  ],
+  [
+    "BP-03",
+    "I prefer working behind the scenes rather than being the center of attention.",
+    "RESERVED_EXPRESSION",
+    false,
+  ],
+  [
+    "BP-04",
+    "I follow established rules and procedures even when they make a task slower.",
+    "STRUCTURE_ORIENTATION",
+    false,
+  ],
+  [
+    "BP-05",
+    "I adapt quickly when unexpected changes occur.",
+    "ADAPTABILITY",
+    false,
+  ],
+  [
+    "BP-06",
+    "I rely more on facts and evidence than intuition when making important decisions.",
+    "ANALYTICAL_THINKING",
+    false,
+  ],
+  [
+    "BP-07",
+    "I am comfortable making calculated decisions when all the information is not available.",
+    "DECISIVENESS_INITIATIVE",
+    false,
+  ],
+  [
+    "BP-08",
+    "I am strongly affected by art, music, creativity, or beautiful surroundings.",
+    "SENSITIVITY_REFLECTION",
+    false,
+  ],
+  [
+    "BP-09",
+    "I usually keep my personal feelings private.",
+    "RESERVED_EXPRESSION",
+    false,
+  ],
+  [
+    "BP-10",
+    "I often think deeply about the reasons behind events and experiences.",
+    "SENSITIVITY_REFLECTION",
+    false,
+  ],
+  [
+    "BP-11",
+    "I feel comfortable speaking or presenting in front of a large audience.",
+    "ASSERTIVE_COMMUNICATION",
+    false,
+  ],
+  [
+    "BP-12",
+    "I prefer proven and traditional methods over completely new approaches.",
+    "STRUCTURE_ORIENTATION",
+    false,
+  ],
+  [
+    "BP-13",
+    "I naturally take charge when a group lacks clear direction.",
+    "DECISIVENESS_INITIATIVE",
+    false,
+  ],
+  [
+    "BP-14",
+    "I can become distracted when there is noise or activity around me.",
+    "FOCUS_RESILIENCE",
+    true,
+  ],
+  [
+    "BP-15",
+    "I enjoy understanding the motives behind people's behaviour.",
+    "SOCIAL_INSIGHT_DIPLOMACY",
+    false,
+  ],
+  [
+    "BP-16",
+    "I remain polite and respectful even when I am frustrated or disagree strongly.",
+    "SOCIAL_INSIGHT_DIPLOMACY",
+    false,
+  ],
+  [
+    "BP-17",
+    "I prefer completing important tasks independently rather than depending heavily on others.",
+    "INDEPENDENT_JUDGEMENT",
+    false,
+  ],
+  [
+    "BP-18",
+    "I am comfortable questioning existing rules or authority when I believe improvement is needed.",
+    "INDEPENDENT_JUDGEMENT",
+    false,
+  ],
+  [
+    "BP-19",
+    "Criticism of my work or ideas can affect me strongly.",
+    "FOCUS_RESILIENCE",
+    true,
+  ],
+  [
+    "BP-20",
+    "I prefer a predictable routine rather than frequent unexpected changes.",
+    "ADAPTABILITY",
+    true,
+  ],
+];
+
+const MOTIVATION_VALUES: readonly LikertDimensionSeed[] = [
+  [
+    "MV-01",
+    "Opportunities for career advancement strongly motivate me.",
+    "GROWTH_ACHIEVEMENT",
+    false,
+  ],
+  [
+    "MV-02",
+    "I feel most satisfied when I achieve challenging goals.",
+    "GROWTH_ACHIEVEMENT",
+    false,
+  ],
+  [
+    "MV-03",
+    "Recognition for good performance is important to me.",
+    "GROWTH_ACHIEVEMENT",
+    false,
+  ],
+  [
+    "MV-04",
+    "I actively seek constructive feedback that can help me improve.",
+    "GROWTH_ACHIEVEMENT",
+    false,
+  ],
+
+  [
+    "MV-05",
+    "I perform best when I have freedom in deciding how to complete my work.",
+    "AUTONOMY_LEADERSHIP",
+    false,
+  ],
+  [
+    "MV-06",
+    "I am motivated by opportunities to lead teams or projects.",
+    "AUTONOMY_LEADERSHIP",
+    false,
+  ],
+  [
+    "MV-07",
+    "Having influence over important organizational decisions is important to me.",
+    "AUTONOMY_LEADERSHIP",
+    false,
+  ],
+  [
+    "MV-08",
+    "I prefer taking personal responsibility for both the success and failure of my work.",
+    "AUTONOMY_LEADERSHIP",
+    false,
+  ],
+
+  [
+    "MV-09",
+    "Working in a supportive and friendly team environment is important to me.",
+    "COLLABORATION_RELATIONSHIPS",
+    false,
+  ],
+  [
+    "MV-10",
+    "I find satisfaction in mentoring, supporting, or developing other people.",
+    "COLLABORATION_RELATIONSHIPS",
+    false,
+  ],
+  [
+    "MV-11",
+    "I prefer working toward shared team goals rather than competing only for individual success.",
+    "COLLABORATION_RELATIONSHIPS",
+    false,
+  ],
+  [
+    "MV-12",
+    "Building positive relationships with colleagues is important to my job satisfaction.",
+    "COLLABORATION_RELATIONSHIPS",
+    false,
+  ],
+
+  [
+    "MV-13",
+    "Job security is more important to me than the possibility of earning unpredictable financial rewards.",
+    "STABILITY_WELLBEING",
+    false,
+  ],
+  [
+    "MV-14",
+    "Maintaining a healthy balance between my work and personal life is important to me.",
+    "STABILITY_WELLBEING",
+    false,
+  ],
+  [
+    "MV-15",
+    "I work best when my responsibilities and expectations are clearly defined.",
+    "STABILITY_WELLBEING",
+    false,
+  ],
+  [
+    "MV-16",
+    "I value organizations that actively support employee health and well-being.",
+    "STABILITY_WELLBEING",
+    false,
+  ],
+
+  [
+    "MV-17",
+    "I find it easier to stay engaged when I believe in the ethical values of the organization.",
+    "PURPOSE_ETHICS",
+    false,
+  ],
+  [
+    "MV-18",
+    "Knowing that my work creates a positive impact motivates me.",
+    "PURPOSE_ETHICS",
+    false,
+  ],
+  [
+    "MV-19",
+    "I value organizations that contribute positively to society and the environment.",
+    "PURPOSE_ETHICS",
+    false,
+  ],
+  [
+    "MV-20",
+    "I am sometimes willing to give up personal benefits when doing so creates a greater benefit for others.",
+    "PURPOSE_ETHICS",
+    false,
+  ],
 ];
 
 
@@ -484,65 +695,84 @@ async function seedBigFive(
 }
 
 
-async function seedSimpleLikert(
+async function seedMappedLikert(
   testId: string,
-  prefix: string,
-  questions: string[]
+  questions: readonly LikertDimensionSeed[]
 ) {
   for (
     let index = 0;
     index < questions.length;
     index += 1
   ) {
-    const itemCode =
-      `${prefix}-${String(
-        index + 1
-      ).padStart(
-        2,
-        "0"
-      )}`;
+    const [
+      itemCode,
+      questionText,
+      traitKey,
+      reverseScored,
+    ] =
+      questions[index];
+
 
     await prisma.psychometricQuestion
       .upsert({
         where: {
           itemCode,
         },
+
         update: {
           testId,
+
           sectionId:
             null,
-          questionText:
-            questions[index],
+
+          questionText,
+
           questionType:
             PsychometricQuestionType.LIKERT_5,
+
           optionA:
             null,
+
           optionB:
             null,
+
           optionC:
             null,
+
           optionD:
             null,
+
           correctOption:
             null,
-          traitKey:
-            null,
-          reverseScored:
-            false,
+
+          traitKey,
+
+          reverseScored,
+
           sortOrder:
             index + 1,
+
           isActive:
             true,
         },
+
         create: {
           testId,
+
           itemCode,
-          questionText:
-            questions[index],
+
+          questionText,
+
           questionType:
             PsychometricQuestionType.LIKERT_5,
+
+          traitKey,
+
+          reverseScored,
+
           sortOrder:
             index + 1,
+
           isActive:
             true,
         },
@@ -602,15 +832,13 @@ async function main() {
     bigFiveTestId
   );
 
-  await seedSimpleLikert(
+  await seedMappedLikert(
     behaviouralTestId,
-    "BP",
     BEHAVIOURAL
   );
 
-  await seedSimpleLikert(
+  await seedMappedLikert(
     motivationTestId,
-    "MV",
     MOTIVATION_VALUES
   );
 

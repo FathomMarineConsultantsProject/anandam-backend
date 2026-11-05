@@ -150,8 +150,7 @@ function getReportCopy(
         "Behavioural Pattern",
 
       assessmentName:
-        analysis?.test?.title ||
-        "Behavioural Pattern",
+        "16 PF Personality",
 
       subtitle:
         "Explore your behavioural tendencies and understand how they may influence the way you work and interact.",
@@ -177,7 +176,6 @@ function getReportCopy(
         "Motivation & Values",
 
       assessmentName:
-        analysis?.test?.title ||
         "Motivation & Values",
 
       subtitle:
@@ -200,7 +198,6 @@ function getReportCopy(
       "Maritime Human Performance Analysis",
 
     assessmentName:
-      analysis?.test?.title ||
       "Maritime Human Performance Analysis",
 
     subtitle:
@@ -216,7 +213,6 @@ function getReportCopy(
       "See how your performance compares across the main assessment areas.",
   };
 }
-
 
 function drawInnerHeader(
   doc: PDFKit.PDFDocument,
@@ -234,23 +230,39 @@ function drawInnerHeader(
       : REPORT_ASSETS.coverLogo;
 
 
+  // ====================================================
+  // SMALL ANANDUM LOGO
+  // ====================================================
+
   if (
     assetExists(
       logoPath
     )
   ) {
     doc.image(
-  logoPath,
-  24,
-  10,
-  {
-    fit: [
-      75,
-      18,
-    ],
+      logoPath,
+      24,
+      10,
+      {
+        width:
+          80,
+      }
+    );
   }
-);
-  }
+
+
+  // ====================================================
+  // DYNAMIC TEST NAME - TOP RIGHT
+  // ====================================================
+
+  const headerFontSize =
+    assessmentName.length >
+    28
+      ? 7.5
+      : assessmentName.length >
+          20
+        ? 8.5
+        : 9.5;
 
 
   doc
@@ -258,7 +270,7 @@ function drawInnerHeader(
       "Helvetica"
     )
     .fontSize(
-      10
+      headerFontSize
     )
     .fillColor(
       "#8F9399"
@@ -266,11 +278,11 @@ function drawInnerHeader(
     .text(
       assessmentName,
       pageWidth -
-        111,
+        220,
       14,
       {
         width:
-          87,
+          196,
 
         align:
           "right",
@@ -280,6 +292,10 @@ function drawInnerHeader(
       }
     );
 
+
+  // ====================================================
+  // HEADER DIVIDER
+  // ====================================================
 
   doc
     .moveTo(
@@ -305,7 +321,6 @@ function drawInnerHeader(
   doc.y =
     62;
 }
-
 
 function drawPageFooter(
   doc: PDFKit.PDFDocument,
@@ -1606,89 +1621,118 @@ function writeProfileAnalytics(
           }
         );
 
+// ====================================================
+// PERCENTAGE
+//
+// Move it left so there is clear separation
+// between percentage and level pill.
+// ====================================================
 
-      doc
-        .font(
-          "Helvetica-Bold"
-        )
-        .fontSize(
-          9
-        )
-        .fillColor(
-          COLORS.heading
-        )
-        .text(
-          `${Math.round(
-            percentage *
-              10
-          ) /
-            10}%`,
-          contentX +
-            boxWidth -
-            180,
-          y +
-            11,
-          {
-            width:
-              60,
+const scoreWidth =
+  64;
 
-            align:
-              "right",
-          }
-        );
+const scoreX =
+  contentX +
+  boxWidth -
+  220;
 
 
-      const pillWidth =
-        105;
+doc
+  .font(
+    "Helvetica-Bold"
+  )
+  .fontSize(
+    9
+  )
+  .fillColor(
+    COLORS.heading
+  )
+  .text(
+    `${Math.round(
+      percentage *
+        10
+    ) /
+      10}%`,
+    scoreX,
+    y +
+      12,
+    {
+      width:
+        scoreWidth,
 
-      const pillHeight =
-        22;
+      align:
+        "right",
 
-      const pillX =
-        contentX +
-        boxWidth -
-        pillWidth -
-        18;
-
-
-      doc
-        .roundedRect(
-          pillX,
-          y +
-            6,
-          pillWidth,
-          pillHeight,
-          11
-        )
-        .fill(
-          color
-        );
+      lineBreak:
+        false,
+    }
+  );
 
 
-      doc
-        .font(
-          "Helvetica"
-        )
-        .fontSize(
-          7.4
-        )
-        .fillColor(
-          "#FFFFFF"
-        )
-        .text(
-          dimension.level ||
-            "",
-          pillX,
-          y +
-            13,
-          {
-            width:
-              pillWidth,
+// ====================================================
+// LEVEL PILL
+//
+// Lowered to visually align with Figma.
+// ====================================================
 
-            align:
-              "center",
-          }
-        );
+const pillWidth =
+  105;
+
+const pillHeight =
+  22;
+
+const pillX =
+  contentX +
+  boxWidth -
+  pillWidth -
+  18;
+
+const pillY =
+  y +
+  10;
+
+
+doc
+  .roundedRect(
+    pillX,
+    pillY,
+    pillWidth,
+    pillHeight,
+    11
+  )
+  .fill(
+    color
+  );
+
+
+doc
+  .font(
+    "Helvetica"
+  )
+  .fontSize(
+    7.4
+  )
+  .fillColor(
+    "#FFFFFF"
+  )
+  .text(
+    dimension.level ||
+      "",
+    pillX,
+    pillY +
+      7,
+    {
+      width:
+        pillWidth,
+
+      align:
+        "center",
+
+      lineBreak:
+        false,
+    }
+  );
+      
 
 
       if (
@@ -2786,6 +2830,106 @@ function writeLegalPage(
     doc,
     "Page 3 of 3"
   );
+
+  // ====================================================
+// PARTICIPANT ACKNOWLEDGEMENT
+// ====================================================
+
+const acknowledgement =
+  analysis?.disclaimerAcknowledgement ||
+  analysis?.acknowledgement ||
+  analysis?.disclaimer?.acknowledgement ||
+  null;
+
+
+const acknowledgedAt =
+  acknowledgement?.acknowledgedAt ||
+  acknowledgement?.acceptedAt ||
+  analysis?.acknowledgedAt ||
+  null;
+
+
+if (
+  acknowledgedAt
+) {
+  y +=
+    12;
+
+
+  // Small divider
+
+  doc
+    .moveTo(
+      x,
+      y
+    )
+    .lineTo(
+      x +
+        width,
+      y
+    )
+    .lineWidth(
+      0.6
+    )
+    .strokeColor(
+      "#D9D9D9"
+    )
+    .stroke();
+
+
+  y +=
+    14;
+
+
+  doc
+    .font(
+      "Helvetica-Bold"
+    )
+    .fontSize(
+      10
+    )
+    .fillColor(
+      COLORS.heading
+    )
+    .text(
+      "Participant Acknowledgement",
+      x,
+      y,
+      {
+        width,
+      }
+    );
+
+
+  y =
+    doc.y +
+    7;
+
+
+  doc
+    .font(
+      "Helvetica"
+    )
+    .fontSize(
+      8.8
+    )
+    .fillColor(
+      "#303744"
+    )
+    .text(
+      `The participant acknowledged and accepted the Assessment Disclaimer and Limitation of Liability on ${formatDateTime(
+        acknowledgedAt
+      )}.`,
+      x,
+      y,
+      {
+        width,
+
+        lineGap:
+          2,
+      }
+    );
+}
 }
 
 

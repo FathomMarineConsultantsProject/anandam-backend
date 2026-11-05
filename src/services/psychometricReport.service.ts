@@ -1,3 +1,9 @@
+import * as fs
+  from "fs";
+
+import * as path
+  from "path";
+
 import PDFDocument
   from "pdfkit";
 
@@ -8,13 +14,19 @@ import {
 
 const COLORS = {
   heading:
-    "#0C1421",
+    "#111827",
+
+  navy:
+    "#111827",
 
   body:
-    "#6F737B",
+    "#5F6470",
+
+  muted:
+    "#858A94",
 
   border:
-    "#D9D9D9",
+    "#D8D8D8",
 
   accent:
     "#8C3422",
@@ -22,13 +34,313 @@ const COLORS = {
   gold:
     "#C99A31",
 
+  paleGold:
+    "#FFF2D4",
+
   soft:
-    "#F7F4EF",
+    "#FBFAF8",
+
+  tealCard:
+    "#EEF8F7",
+
+  tealBorder:
+    "#C9DEDE",
 
   track:
-    "#E7E7E7",
+    "#E1E4EE",
+
+  purple:
+    "#9177D8",
+
+  blue:
+    "#75A0DE",
+
+  cyan:
+    "#6FB5CF",
+
+  orange:
+    "#E5AE67",
+
+  pink:
+    "#D262DB",
 };
 
+
+const REPORT_ASSET_DIR =
+  path.join(
+    process.cwd(),
+    "src",
+    "psychometric result pdf"
+  );
+
+
+const REPORT_ASSETS = {
+  headerTop:
+    path.join(
+      REPORT_ASSET_DIR,
+      "header1.png"
+    ),
+
+  headerBottom:
+    path.join(
+      REPORT_ASSET_DIR,
+      "header2.png"
+    ),
+
+  logo:
+    path.join(
+      REPORT_ASSET_DIR,
+      "logo name.png"
+    ),
+};
+
+
+function assetExists(
+  filePath: string
+) {
+  return fs.existsSync(
+    filePath
+  );
+}
+
+function getReportCopy(
+  analysis: any
+) {
+  const type =
+    analysis?.test?.type;
+
+
+  if (
+    type ===
+    "BIG_FIVE"
+  ) {
+    return {
+      reportTitle:
+        "Personality Insights",
+
+      assessmentName:
+        "Big Five Personality",
+
+      subtitle:
+        "Explore your traits and understand yourself better through the Big Five personality model.",
+
+      insightTitle:
+        "Your Personality Insights",
+
+      dimensionTitle:
+        "Your Personality Dimensions",
+
+      dimensionSubtitle:
+        "See how your five personality areas compare.",
+    };
+  }
+
+
+  if (
+    type ===
+    "PERSONALITY_16PF"
+  ) {
+    return {
+      reportTitle:
+        "Behavioural Pattern",
+
+      assessmentName:
+        analysis?.test?.title ||
+        "Behavioural Pattern",
+
+      subtitle:
+        "Explore your behavioural tendencies and understand how they may influence the way you work and interact.",
+
+      insightTitle:
+        "Your Behavioural Insights",
+
+      dimensionTitle:
+        "Your Behavioural Dimensions",
+
+      dimensionSubtitle:
+        "See how your behavioural tendencies compare.",
+    };
+  }
+
+
+  if (
+    type ===
+    "MOTIVATION_VALUES"
+  ) {
+    return {
+      reportTitle:
+        "Motivation & Values",
+
+      assessmentName:
+        analysis?.test?.title ||
+        "Motivation & Values",
+
+      subtitle:
+        "Explore the values and motivations that influence your decisions and priorities.",
+
+      insightTitle:
+        "Your Motivation & Values",
+
+      dimensionTitle:
+        "Your Motivational Dimensions",
+
+      dimensionSubtitle:
+        "See how your motivational priorities compare.",
+    };
+  }
+
+
+  return {
+    reportTitle:
+      "Maritime Human Performance Analysis",
+
+    assessmentName:
+      analysis?.test?.title ||
+      "Maritime Human Performance Analysis",
+
+    subtitle:
+      "Review your score, performance analysis and assessment responses.",
+
+    insightTitle:
+      "Your Performance Analysis",
+
+    dimensionTitle:
+      "Your Performance Dimensions",
+
+    dimensionSubtitle:
+      "See how your performance compares across the main assessment areas.",
+  };
+}
+
+
+function drawInnerHeader(
+  doc: PDFKit.PDFDocument,
+  assessmentName: string
+) {
+  const pageWidth =
+    doc.page.width;
+
+
+  if (
+    assetExists(
+      REPORT_ASSETS.logo
+    )
+  ) {
+    doc.image(
+      REPORT_ASSETS.logo,
+      24,
+      13,
+      {
+        width:
+          95,
+      }
+    );
+  }
+
+
+  doc
+    .font(
+      "Helvetica"
+    )
+    .fontSize(
+      9
+    )
+    .fillColor(
+      "#989AA1"
+    )
+    .text(
+      assessmentName,
+      pageWidth -
+        220,
+      18,
+      {
+        width:
+          195,
+
+        align:
+          "right",
+      }
+    );
+
+
+  doc
+    .moveTo(
+      0,
+      40
+    )
+    .lineTo(
+      pageWidth,
+      40
+    )
+    .lineWidth(
+      0.7
+    )
+    .strokeColor(
+      "#DEDEDE"
+    )
+    .stroke();
+
+
+  doc.x =
+    24;
+
+  doc.y =
+    63;
+}
+
+
+function drawPageFooter(
+  doc: PDFKit.PDFDocument,
+  text: string
+) {
+  doc
+    .font(
+      "Helvetica"
+    )
+    .fontSize(
+      9
+    )
+    .fillColor(
+      "#9699A6"
+    )
+    .text(
+      text,
+      0,
+      doc.page.height -
+        28,
+      {
+        width:
+          doc.page.width,
+
+        align:
+          "center",
+      }
+    );
+}
+
+
+function getDimensionColor(
+  index: number
+) {
+  const colors = [
+    COLORS.purple,
+    COLORS.cyan,
+    COLORS.blue,
+    COLORS.orange,
+    COLORS.pink,
+    "#77A58B",
+    "#B58BC8",
+    "#7297C7",
+    "#C9896D",
+    "#8C79B7",
+  ];
+
+
+  return colors[
+    index %
+      colors.length
+  ];
+}
 
 function formatDateTime(
   value:
@@ -120,50 +432,13 @@ function ensureSpace(
 
 
 function writeBrand(
-  doc: PDFKit.PDFDocument
+  doc: PDFKit.PDFDocument,
+  assessmentName =
+    "Assessment Result"
 ) {
-  doc
-    .font(
-      "Helvetica-Bold"
-    )
-    .fontSize(
-      10
-    )
-    .fillColor(
-      COLORS.gold
-    )
-    .text(
-      "ANANDUM",
-      {
-        characterSpacing:
-          2,
-      }
-    );
-
-
-  doc
-    .moveDown(
-      0.2
-    )
-    .strokeColor(
-      COLORS.border
-    )
-    .moveTo(
-      doc.page
-        .margins.left,
-      doc.y
-    )
-    .lineTo(
-      doc.page.width -
-        doc.page
-          .margins.right,
-      doc.y
-    )
-    .stroke();
-
-
-  doc.moveDown(
-    1
+  drawInnerHeader(
+    doc,
+    assessmentName
   );
 }
 
@@ -171,10 +446,13 @@ function writeBrand(
 function writePageTitle(
   doc: PDFKit.PDFDocument,
   title: string,
-  subtitle?: string
+  subtitle?: string,
+  assessmentName?: string
 ) {
   writeBrand(
-    doc
+    doc,
+    assessmentName ||
+      "Assessment Result"
   );
 
 
@@ -183,7 +461,7 @@ function writePageTitle(
       "Helvetica-Bold"
     )
     .fontSize(
-      19
+      17
     )
     .fillColor(
       COLORS.heading
@@ -193,7 +471,9 @@ function writePageTitle(
     );
 
 
-  if (subtitle) {
+  if (
+    subtitle
+  ) {
     doc
       .moveDown(
         0.35
@@ -202,7 +482,7 @@ function writePageTitle(
         "Helvetica"
       )
       .fontSize(
-        10
+        9
       )
       .fillColor(
         COLORS.body
@@ -214,7 +494,7 @@ function writePageTitle(
 
 
   doc.moveDown(
-    1.3
+    1.1
   );
 }
 
@@ -457,40 +737,100 @@ function writeCover(
   doc: PDFKit.PDFDocument,
   analysis: any
 ) {
-  const width =
-    doc.page.width -
-    doc.page
-      .margins.left -
-    doc.page
-      .margins.right;
+  const pageWidth =
+    doc.page.width;
 
+  const pageHeight =
+    doc.page.height;
 
-  doc
-    .font(
-      "Helvetica-Bold"
-    )
-    .fontSize(
-      12
-    )
-    .fillColor(
-      COLORS.gold
-    )
-    .text(
-      "ANANDUM",
-      {
-        align:
-          "center",
-
-        characterSpacing:
-          3,
-      }
+  const copy =
+    getReportCopy(
+      analysis
     );
 
 
-  doc.moveDown(
-    5
-  );
+  // ====================================================
+  // FIGMA TOP WAVE
+  // ====================================================
 
+  if (
+    assetExists(
+      REPORT_ASSETS.headerTop
+    )
+  ) {
+    doc.image(
+  REPORT_ASSETS.headerTop,
+  0,
+  0,
+  {
+    fit: [
+      pageWidth,
+      165,
+    ],
+
+    align:
+      "center",
+  }
+);
+  }
+
+
+  // ====================================================
+  // FIGMA BOTTOM WAVE
+  // ====================================================
+
+  if (
+    assetExists(
+      REPORT_ASSETS.headerBottom
+    )
+  ) {
+    doc.image(
+      REPORT_ASSETS.headerBottom,
+      0,
+      pageHeight -
+        235,
+      {
+        fit: [
+          pageWidth,
+          235,
+        ],
+
+        align:
+          "center",
+
+        valign:
+          "bottom",
+      }
+    );
+  }
+
+
+  // ====================================================
+  // REAL ANANDUM LOGO
+  // ====================================================
+
+  if (
+    assetExists(
+      REPORT_ASSETS.logo
+    )
+  ) {
+    doc.image(
+      REPORT_ASSETS.logo,
+      pageWidth /
+        2 -
+        80,
+      235,
+      {
+        width:
+          160,
+      }
+    );
+  }
+
+
+  // ====================================================
+  // REPORT LABEL
+  // ====================================================
 
   doc
     .font(
@@ -500,279 +840,197 @@ function writeCover(
       9
     )
     .fillColor(
-      COLORS.body
+      "#7C7F88"
     )
     .text(
       "ASSESSMENT RESULT REPORT",
+      0,
+      346,
       {
+        width:
+          pageWidth,
+
         align:
           "center",
-
-        characterSpacing:
-          1.5,
       }
     );
 
 
-  doc.moveDown(
-    1
-  );
-
+  // ====================================================
+  // TITLE
+  // ====================================================
 
   doc
     .font(
       "Helvetica-Bold"
     )
     .fontSize(
-      23
+      24
     )
     .fillColor(
       COLORS.heading
     )
     .text(
-      analysis
-        .test
-        .title,
+      copy.reportTitle,
+      40,
+      371,
       {
+        width:
+          pageWidth -
+          80,
+
         align:
           "center",
       }
     );
 
 
-  doc.moveDown(
-    0.7
-  );
+  // Gold underline
+  doc
+    .moveTo(
+      pageWidth /
+        2 -
+        32,
+      407
+    )
+    .lineTo(
+      pageWidth /
+        2 +
+        32,
+      407
+    )
+    .lineWidth(
+      3
+    )
+    .strokeColor(
+      COLORS.gold
+    )
+    .stroke();
 
 
-  if (
-    analysis
-      .test
-      .description
+  // ====================================================
+  // DESCRIPTION
+  // ====================================================
+
+  doc
+    .font(
+      "Helvetica"
+    )
+    .fontSize(
+      11
+    )
+    .fillColor(
+      COLORS.body
+    )
+    .text(
+      copy.subtitle,
+      95,
+      424,
+      {
+        width:
+          pageWidth -
+          190,
+
+        align:
+          "center",
+
+        lineGap:
+          3,
+      }
+    );
+
+
+  // ====================================================
+  // META INFORMATION BOX
+  // ====================================================
+
+  const boxX =
+    24;
+
+  const boxY =
+    476;
+
+  const boxWidth =
+    pageWidth -
+    48;
+
+  const boxHeight =
+    66;
+
+  const columnWidth =
+    boxWidth /
+    3;
+
+
+  doc
+    .rect(
+      boxX,
+      boxY,
+      boxWidth,
+      boxHeight
+    )
+    .fillAndStroke(
+      "#FCFBF9",
+      "#EEEAE3"
+    );
+
+
+  const labels = [
+    "Participant",
+    "Assessment taken",
+    "Date & time completed",
+  ];
+
+
+  const values = [
+    analysis?.participant
+      ?.fullName ||
+      "—",
+
+    copy.assessmentName,
+
+    formatDateTime(
+      analysis?.completedAt
+    ),
+  ];
+
+
+  for (
+    let index = 0;
+    index <
+    3;
+    index += 1
   ) {
+    const x =
+      boxX +
+      columnWidth *
+        index;
+
+
     doc
       .font(
         "Helvetica"
       )
       .fontSize(
-        10
-      )
-      .fillColor(
-        COLORS.body
-      )
-      .text(
-        analysis
-          .test
-          .description,
-        {
-          align:
-            "center",
-
-          width:
-            width -
-            70,
-
-          indent:
-            35,
-        }
-      );
-  }
-
-
-  doc.moveDown(
-    4
-  );
-
-
-  const y =
-    doc.y;
-
-
-  doc
-    .roundedRect(
-      doc.page
-        .margins.left,
-      y,
-      width,
-      analysis
-          .resultKind ===
-        "MARITIME_SCORED"
-        ? 115
-        : 85,
-      5
-    )
-    .fill(
-      COLORS.soft
-    );
-
-
-  doc
-    .font(
-      "Helvetica-Bold"
-    )
-    .fontSize(
-      9
-    )
-    .fillColor(
-      COLORS.body
-    )
-    .text(
-      "Participant",
-      doc.page
-        .margins.left +
-        18,
-      y +
-        18
-    );
-
-
-  doc
-    .font(
-      "Helvetica"
-    )
-    .fontSize(
-      10
-    )
-    .fillColor(
-      COLORS.heading
-    )
-    .text(
-      analysis
-        .participant
-        .fullName ||
-        "—",
-      doc.page
-        .margins.left +
-        18,
-      y +
-        35
-    );
-
-
-  doc
-    .font(
-      "Helvetica-Bold"
-    )
-    .fontSize(
-      9
-    )
-    .fillColor(
-      COLORS.body
-    )
-    .text(
-      "Attempt",
-      doc.page
-        .margins.left +
-        width /
-          3,
-      y +
-        18
-    );
-
-
-  doc
-    .font(
-      "Helvetica"
-    )
-    .fontSize(
-      10
-    )
-    .fillColor(
-      COLORS.heading
-    )
-    .text(
-      String(
-        analysis
-          .attemptNumber
-      ),
-      doc.page
-        .margins.left +
-        width /
-          3,
-      y +
-        35
-    );
-
-
-  doc
-    .font(
-      "Helvetica-Bold"
-    )
-    .fontSize(
-      9
-    )
-    .fillColor(
-      COLORS.body
-    )
-    .text(
-      "Date & time completed",
-      doc.page
-        .margins.left +
-        (
-          width /
-          3
-        ) *
-          2,
-      y +
-        18
-    );
-
-
-  doc
-    .font(
-      "Helvetica"
-    )
-    .fontSize(
-      9
-    )
-    .fillColor(
-      COLORS.heading
-    )
-    .text(
-      formatDateTime(
-        analysis
-          .completedAt
-      ),
-      doc.page
-        .margins.left +
-        (
-          width /
-          3
-        ) *
-          2,
-      y +
-        35,
-      {
-        width:
-          width /
-            3 -
-          20,
-      }
-    );
-
-
-  if (
-    analysis
-      .resultKind ===
-    "MARITIME_SCORED"
-  ) {
-    doc
-      .font(
-        "Helvetica-Bold"
-      )
-      .fontSize(
         9
       )
       .fillColor(
-        COLORS.body
+        "#808289"
       )
       .text(
-        "Overall result",
-        doc.page
-          .margins.left +
-          18,
-        y +
-          72
+        labels[
+          index
+        ],
+        x,
+        boxY +
+          16,
+        {
+          width:
+            columnWidth,
+
+          align:
+            "center",
+        }
       );
 
 
@@ -781,18 +1039,27 @@ function writeCover(
         "Helvetica-Bold"
       )
       .fontSize(
-        13
+        10.5
       )
       .fillColor(
-        COLORS.accent
+        COLORS.heading
       )
       .text(
-        `${analysis.score.correct} / ${analysis.score.total}   ${analysis.score.percentage}%`,
-        doc.page
-          .margins.left +
-          18,
-        y +
-          89
+        values[
+          index
+        ],
+        x +
+          4,
+        boxY +
+          38,
+        {
+          width:
+            columnWidth -
+            8,
+
+          align:
+            "center",
+        }
       );
   }
 }
@@ -802,32 +1069,75 @@ function writeProfileAnalytics(
   doc: PDFKit.PDFDocument,
   analysis: any
 ) {
-  writePageTitle(
-    doc,
-    `Your ${analysis.test.title}`,
-    "Explore your strongest tendencies and how they may show up day to day."
-  );
-
-
-  doc
-    .roundedRect(
-      doc.x,
-      doc.y,
-      doc.page.width -
-        doc.page
-          .margins.left -
-        doc.page
-          .margins.right,
-      92,
-      5
-    )
-    .fill(
-      "#F5F2FB"
+  const copy =
+    getReportCopy(
+      analysis
     );
 
 
-  const boxY =
-    doc.y;
+  drawInnerHeader(
+    doc,
+    copy.assessmentName
+  );
+
+
+  const pageWidth =
+    doc.page.width;
+
+  const contentX =
+    24;
+
+  const contentWidth =
+    pageWidth -
+    48;
+
+
+  // ====================================================
+  // PAGE TITLE
+  // ====================================================
+
+  doc
+    .font(
+      "Helvetica-Bold"
+    )
+    .fontSize(
+      13
+    )
+    .fillColor(
+      COLORS.heading
+    )
+    .text(
+      copy.insightTitle,
+      contentX,
+      66
+    );
+
+
+  // ====================================================
+  // GOLD ACCENT INSIGHT
+  // ====================================================
+
+  const insightY =
+    87;
+
+
+  doc
+    .moveTo(
+      contentX,
+      insightY
+    )
+    .lineTo(
+      contentX,
+      insightY +
+        67
+    )
+    .lineWidth(
+      2
+    )
+    .strokeColor(
+      COLORS.gold
+    )
+    .stroke();
 
 
   doc
@@ -835,28 +1145,23 @@ function writeProfileAnalytics(
       "Helvetica-Bold"
     )
     .fontSize(
-      12
+      10.5
     )
     .fillColor(
       COLORS.heading
     )
     .text(
-      analysis
-        .analysis
-        .headline,
-      doc.page
-        .margins.left +
-        16,
-      boxY +
-        17,
+      analysis?.analysis
+        ?.headline ||
+        "Your assessment profile is ready.",
+      contentX +
+        12,
+      insightY +
+        4,
       {
         width:
-          doc.page.width -
-          doc.page
-            .margins.left -
-          doc.page
-            .margins.right -
-          32,
+          contentWidth -
+          18,
       }
     );
 
@@ -866,55 +1171,558 @@ function writeProfileAnalytics(
       "Helvetica"
     )
     .fontSize(
-      9.5
+      8.8
     )
     .fillColor(
       COLORS.body
     )
     .text(
-      analysis
-        .analysis
-        .summary,
-      doc.page
-        .margins.left +
-        16,
-      doc.y +
-        8,
+      analysis?.analysis
+        ?.summary ||
+        "",
+      contentX +
+        12,
+      insightY +
+        26,
       {
         width:
-          doc.page.width -
-          doc.page
-            .margins.left -
-          doc.page
-            .margins.right -
-          32,
+          contentWidth -
+          18,
+
+        lineGap:
+          2,
       }
     );
 
 
-  doc.y =
-    boxY +
-    112;
+  // ====================================================
+  // TOP 3 CARDS
+  // ====================================================
+
+  const cards =
+    Array.isArray(
+      analysis?.analysis
+        ?.topDimensions
+    )
+      ? analysis.analysis
+          .topDimensions
+          .slice(
+            0,
+            3
+          )
+      : [];
 
 
-  writeSectionTitle(
-    doc,
-    "Your Profile Dimensions"
+  const cardsY =
+    178;
+
+  const cardGap =
+    16;
+
+  const cardWidth =
+    (
+      contentWidth -
+      cardGap *
+        2
+    ) /
+    3;
+
+  const cardHeight =
+    101;
+
+
+  cards.forEach(
+    (
+      card: any,
+      index: number
+    ) => {
+      const x =
+        contentX +
+        index *
+          (
+            cardWidth +
+            cardGap
+          );
+
+
+      doc
+        .roundedRect(
+          x,
+          cardsY,
+          cardWidth,
+          cardHeight,
+          8
+        )
+        .fillAndStroke(
+          COLORS.tealCard,
+          COLORS.tealBorder
+        );
+
+
+      doc
+        .font(
+          "Helvetica-Bold"
+        )
+        .fontSize(
+          11
+        )
+        .fillColor(
+          COLORS.heading
+        )
+        .text(
+          card.title ||
+            card.label ||
+            "",
+          x +
+            18,
+          cardsY +
+            18,
+          {
+            width:
+              cardWidth -
+              36,
+          }
+        );
+
+
+      doc
+        .font(
+          "Helvetica-Bold"
+        )
+        .fontSize(
+          18
+        )
+        .fillColor(
+          COLORS.heading
+        )
+        .text(
+          `${Number(
+            card.percentage ??
+              0
+          ).toFixed(
+            Number.isInteger(
+              Number(
+                card.percentage ??
+                  0
+              )
+            )
+              ? 0
+              : 1
+          )}%`,
+          x +
+            18,
+          cardsY +
+            58
+        );
+
+
+      doc
+        .font(
+          "Helvetica"
+        )
+        .fontSize(
+          8
+        )
+        .fillColor(
+          "#3D4550"
+        )
+        .text(
+          card.label ||
+            "",
+          x +
+            cardWidth /
+              2,
+          cardsY +
+            65,
+          {
+            width:
+              cardWidth /
+                2 -
+              18,
+
+            align:
+              "right",
+          }
+        );
+    }
   );
 
 
-  for (
-    const dimension
-    of analysis.dimensions
-  ) {
-    writeProgress(
-      doc,
-      dimension.label,
-      dimension.percentage,
-      dimension.description,
-      dimension.level
+  // ====================================================
+  // DIMENSION BOX
+  // ====================================================
+
+  const dimensions =
+    Array.isArray(
+      analysis?.dimensions
+    )
+      ? analysis.dimensions
+      : [];
+
+
+  const boxY =
+    295;
+
+  const boxWidth =
+    contentWidth;
+
+  const availableHeight =
+    doc.page.height -
+    boxY -
+    55;
+
+  const headerHeight =
+    58;
+
+  const rowHeight =
+    dimensions.length
+      ? Math.max(
+          39,
+          Math.min(
+            78,
+            (
+              availableHeight -
+              headerHeight
+            ) /
+              dimensions.length
+          )
+        )
+      : 70;
+
+  const boxHeight =
+    headerHeight +
+    rowHeight *
+      dimensions.length;
+
+
+  doc
+    .roundedRect(
+      contentX,
+      boxY,
+      boxWidth,
+      boxHeight,
+      8
+    )
+    .lineWidth(
+      0.7
+    )
+    .strokeColor(
+      "#CFCFCF"
+    )
+    .stroke();
+
+
+  doc
+    .font(
+      "Helvetica-Bold"
+    )
+    .fontSize(
+      13
+    )
+    .fillColor(
+      COLORS.heading
+    )
+    .text(
+      copy.dimensionTitle,
+      contentX +
+        18,
+      boxY +
+        15
     );
-  }
+
+
+  doc
+    .font(
+      "Helvetica"
+    )
+    .fontSize(
+      8
+    )
+    .fillColor(
+      COLORS.body
+    )
+    .text(
+      copy.dimensionSubtitle,
+      contentX +
+        18,
+      boxY +
+        34
+    );
+
+
+  doc
+    .moveTo(
+      contentX +
+        18,
+      boxY +
+        headerHeight,
+    )
+    .lineTo(
+      contentX +
+        boxWidth -
+        18,
+      boxY +
+        headerHeight
+    )
+    .lineWidth(
+      0.7
+    )
+    .strokeColor(
+      "#DADADA"
+    )
+    .stroke();
+
+
+  dimensions.forEach(
+    (
+      dimension: any,
+      index: number
+    ) => {
+      const y =
+        boxY +
+        headerHeight +
+        rowHeight *
+          index;
+
+      const color =
+        getDimensionColor(
+          index
+        );
+
+      const percentage =
+        Math.max(
+          0,
+          Math.min(
+            100,
+            Number(
+              dimension.percentage ??
+                0
+            )
+          )
+        );
+
+
+      doc
+        .font(
+          "Helvetica-Bold"
+        )
+        .fontSize(
+          rowHeight <
+            50
+            ? 8
+            : 9.5
+        )
+        .fillColor(
+          COLORS.heading
+        )
+        .text(
+          dimension.label,
+          contentX +
+            18,
+          y +
+            11,
+          {
+            width:
+              boxWidth -
+              190,
+          }
+        );
+
+
+      doc
+        .font(
+          "Helvetica-Bold"
+        )
+        .fontSize(
+          9
+        )
+        .fillColor(
+          COLORS.heading
+        )
+        .text(
+          `${Math.round(
+            percentage *
+              10
+          ) /
+            10}%`,
+          contentX +
+            boxWidth -
+            180,
+          y +
+            11,
+          {
+            width:
+              60,
+
+            align:
+              "right",
+          }
+        );
+
+
+      const pillWidth =
+        105;
+
+      const pillHeight =
+        22;
+
+      const pillX =
+        contentX +
+        boxWidth -
+        pillWidth -
+        18;
+
+
+      doc
+        .roundedRect(
+          pillX,
+          y +
+            6,
+          pillWidth,
+          pillHeight,
+          11
+        )
+        .fill(
+          color
+        );
+
+
+      doc
+        .font(
+          "Helvetica"
+        )
+        .fontSize(
+          7.4
+        )
+        .fillColor(
+          "#FFFFFF"
+        )
+        .text(
+          dimension.level ||
+            "",
+          pillX,
+          y +
+            13,
+          {
+            width:
+              pillWidth,
+
+            align:
+              "center",
+          }
+        );
+
+
+      if (
+        rowHeight >=
+        50
+      ) {
+        doc
+          .font(
+            "Helvetica"
+          )
+          .fontSize(
+            7.5
+          )
+          .fillColor(
+            COLORS.body
+          )
+          .text(
+            dimension.description ||
+              "",
+            contentX +
+              18,
+            y +
+              31,
+            {
+              width:
+                boxWidth -
+                36,
+
+              ellipsis:
+                true,
+            }
+          );
+      }
+
+
+      const progressY =
+        y +
+        rowHeight -
+        10;
+
+      const progressX =
+        contentX +
+        18;
+
+      const progressWidth =
+        boxWidth -
+        36;
+
+
+      doc
+        .rect(
+          progressX,
+          progressY,
+          progressWidth,
+          4
+        )
+        .fill(
+          COLORS.track
+        );
+
+
+      doc
+        .rect(
+          progressX,
+          progressY,
+          progressWidth *
+            (
+              percentage /
+              100
+            ),
+          4
+        )
+        .fill(
+          color
+        );
+
+
+      if (
+        index <
+        dimensions.length -
+          1
+      ) {
+        doc
+          .moveTo(
+            contentX +
+              18,
+            y +
+              rowHeight
+          )
+          .lineTo(
+            contentX +
+              boxWidth -
+              18,
+            y +
+              rowHeight
+          )
+          .lineWidth(
+            0.6
+          )
+          .strokeColor(
+            "#DDDDDD"
+          )
+          .stroke();
+      }
+    }
+  );
+
+
+  drawPageFooter(
+    doc,
+    "Page 1 of 3"
+  );
 }
 
 
@@ -923,10 +1731,11 @@ function writeMaritimeAnalytics(
   analysis: any
 ) {
   writePageTitle(
-    doc,
-    "Maritime Human Performance Analysis",
-    "Assessment performance, section results and observed development areas."
-  );
+  doc,
+  "Maritime Human Performance Analysis",
+  "Assessment performance, section results and observed development areas.",
+  analysis.test.title
+);
 
 
   doc
@@ -1060,11 +1869,419 @@ function writeMaritimeAnalytics(
   }
 }
 
+function writeProfileResponsesTable(
+  doc: PDFKit.PDFDocument,
+  analysis: any
+) {
+  doc.addPage();
+
+
+  const copy =
+    getReportCopy(
+      analysis
+    );
+
+
+  drawInnerHeader(
+    doc,
+    copy.assessmentName
+  );
+
+
+  const pageWidth =
+    doc.page.width;
+
+  const x =
+    24;
+
+  const width =
+    pageWidth -
+    48;
+
+
+  doc
+    .font(
+      "Helvetica-Bold"
+    )
+    .fontSize(
+      15
+    )
+    .fillColor(
+      COLORS.heading
+    )
+    .text(
+      "Your Responses",
+      x,
+      66
+    );
+
+
+  const tableY =
+    100;
+
+
+  const columns = {
+    question:
+      30,
+
+    statement:
+      310,
+
+    dimension:
+      105,
+
+    response:
+      width -
+      445,
+  };
+
+
+  function drawHeader(
+    y: number
+  ) {
+    doc
+      .rect(
+        x,
+        y,
+        width,
+        23
+      )
+      .fill(
+        COLORS.paleGold
+      );
+
+
+    doc
+      .font(
+        "Helvetica"
+      )
+      .fontSize(
+        7
+      )
+      .fillColor(
+        COLORS.heading
+      );
+
+
+    doc.text(
+      "Q",
+      x +
+        8,
+      y +
+        8,
+      {
+        width:
+          columns.question,
+      }
+    );
+
+
+    doc.text(
+      "Statement",
+      x +
+        columns.question,
+      y +
+        8,
+      {
+        width:
+          columns.statement,
+      }
+    );
+
+
+    doc.text(
+      "Dimension",
+      x +
+        columns.question +
+        columns.statement,
+      y +
+        8,
+      {
+        width:
+          columns.dimension,
+      }
+    );
+
+
+    doc.text(
+      "Your response",
+      x +
+        columns.question +
+        columns.statement +
+        columns.dimension,
+      y +
+        8,
+      {
+        width:
+          columns.response,
+      }
+    );
+  }
+
+
+  drawHeader(
+    tableY
+  );
+
+
+  let y =
+    tableY +
+    23;
+
+
+  const responses =
+    Array.isArray(
+      analysis?.responses
+    )
+      ? analysis.responses
+      : [];
+
+
+  for (
+    const response
+    of responses
+  ) {
+    doc
+      .font(
+        "Helvetica"
+      )
+      .fontSize(
+        7.2
+      );
+
+
+    const statementHeight =
+      doc.heightOfString(
+        response.questionText ||
+          "",
+        {
+          width:
+            columns.statement -
+            10,
+
+          lineGap:
+            0,
+        }
+      );
+
+
+    const dimensionHeight =
+      doc.heightOfString(
+        response.dimensionLabel ||
+          "",
+        {
+          width:
+            columns.dimension -
+            8,
+        }
+      );
+
+
+    const responseHeight =
+      doc.heightOfString(
+        response.response ||
+          "",
+        {
+          width:
+            columns.response -
+            8,
+        }
+      );
+
+
+    const rowHeight =
+      Math.max(
+        26,
+        statementHeight +
+          10,
+        dimensionHeight +
+          10,
+        responseHeight +
+          10
+      );
+
+
+    if (
+      y +
+      rowHeight >
+      doc.page.height -
+        45
+    ) {
+      drawPageFooter(
+        doc,
+        "Your Responses"
+      );
+
+
+      doc.addPage();
+
+
+      drawInnerHeader(
+        doc,
+        copy.assessmentName
+      );
+
+
+      doc
+        .font(
+          "Helvetica-Bold"
+        )
+        .fontSize(
+          15
+        )
+        .fillColor(
+          COLORS.heading
+        )
+        .text(
+          "Your Responses",
+          x,
+          66
+        );
+
+
+      y =
+        tableY;
+
+
+      drawHeader(
+        y
+      );
+
+
+      y +=
+        23;
+    }
+
+
+    doc
+      .font(
+        "Helvetica"
+      )
+      .fontSize(
+        7.2
+      )
+      .fillColor(
+        COLORS.heading
+      );
+
+
+    doc.text(
+      String(
+        response.questionNumber
+      ),
+      x +
+        8,
+      y +
+        8,
+      {
+        width:
+          columns.question -
+          8,
+      }
+    );
+
+
+    doc.text(
+      response.questionText ||
+        "",
+      x +
+        columns.question,
+      y +
+        8,
+      {
+        width:
+          columns.statement -
+          10,
+      }
+    );
+
+
+    doc.text(
+      response.dimensionLabel ||
+        "—",
+      x +
+        columns.question +
+        columns.statement,
+      y +
+        8,
+      {
+        width:
+          columns.dimension -
+          8,
+      }
+    );
+
+
+    doc.text(
+      response.response ||
+        "—",
+      x +
+        columns.question +
+        columns.statement +
+        columns.dimension,
+      y +
+        8,
+      {
+        width:
+          columns.response -
+          8,
+      }
+    );
+
+
+    doc
+      .moveTo(
+        x,
+        y +
+          rowHeight
+      )
+      .lineTo(
+        x +
+          width,
+        y +
+          rowHeight
+      )
+      .lineWidth(
+        0.5
+      )
+      .strokeColor(
+        "#D7D7D7"
+      )
+      .stroke();
+
+
+    y +=
+      rowHeight;
+  }
+
+
+  drawPageFooter(
+    doc,
+    "Page 2 of 3"
+  );
+}
 
 function writeResponses(
   doc: PDFKit.PDFDocument,
   analysis: any
 ) {
+  // Personality / Behaviour / Motivation
+  // use the compact Figma response table.
+  if (
+    analysis.resultKind !==
+    "MARITIME_SCORED"
+  ) {
+    writeProfileResponsesTable(
+      doc,
+      analysis
+    );
+
+    return;
+  }
+
+
+  // Maritime keeps the existing detailed
+  // correct-answer / selected-answer layout.
   doc.addPage();
 
 
@@ -1308,7 +2525,6 @@ function writeResponses(
   }
 }
 
-
 function writeLegalPage(
   doc: PDFKit.PDFDocument,
   analysis: any
@@ -1316,112 +2532,99 @@ function writeLegalPage(
   doc.addPage();
 
 
-  writePageTitle(
-    doc,
-    "Understanding Your Results",
-    "Important information about interpretation and use of this report."
-  );
-
-
-  doc
-    .font(
-      "Helvetica"
-    )
-    .fontSize(
-      9.5
-    )
-    .fillColor(
-      COLORS.body
-    )
-    .text(
+  const copy =
+    getReportCopy(
       analysis
-          .resultKind ===
-        "MARITIME_SCORED"
-        ? (
-            "This report summarizes performance on the questions presented during this assessment attempt. Results should be used for reflection, learning and development and should not be treated as a standalone employment or high-stakes decision."
-          )
-        : (
-            "These results describe self-reported preferences, tendencies and motivations at the time the assessment was completed. They are intended for reflection and personal development."
-          ),
-      {
-        lineGap:
-          3,
-      }
     );
 
 
-  doc.moveDown(
-    1.4
-  );
-
-
-  writeSectionTitle(
+  drawInnerHeader(
     doc,
-    "Assessment Disclaimer and Limitation of Liability"
+    copy.assessmentName
   );
 
+
+  const x =
+    24;
+
+  const width =
+    doc.page.width -
+    48;
+
+
+  // ====================================================
+  // UNDERSTANDING YOUR RESULTS
+  // ====================================================
 
   doc
     .font(
-      "Helvetica"
+      "Helvetica-Bold"
     )
     .fontSize(
-      9.2
+      15
     )
     .fillColor(
-      COLORS.body
+      COLORS.heading
     )
     .text(
-      analysis
-        .legal
-        .disclaimerText ||
-        (
-          "This assessment is intended for self-awareness and personal development only. " +
-          "It does not constitute a medical, psychological or psychiatric diagnosis."
-        ),
-      {
-        lineGap:
-          3,
-      }
+      "Understanding Your Results",
+      x,
+      66
     );
 
 
-  doc.moveDown(
-    1.3
-  );
+  let y =
+    95;
 
 
-  writeSectionTitle(
-    doc,
-    "Participant Acknowledgement"
-  );
+  const understanding = [
+    "Your results represent a snapshot of your responses at the time the assessment was completed.",
+
+    "Preferences, behaviours, motivations, and responses may change over time or vary depending on circumstances and context.",
+
+    "This report should therefore be used as a tool for reflection and development rather than as a permanent definition of the participant.",
+  ];
 
 
-  doc
-    .font(
-      "Helvetica"
-    )
-    .fontSize(
-      9.2
-    )
-    .fillColor(
-      COLORS.body
-    )
-    .text(
-      analysis
-        .legal
-        .acknowledgementText ||
-        "Participant acknowledgement was recorded before the assessment began.",
-      {
-        lineGap:
-          3,
-      }
-    );
+  for (
+    const paragraph
+    of understanding
+  ) {
+    doc
+      .font(
+        "Helvetica"
+      )
+      .fontSize(
+        9.4
+      )
+      .fillColor(
+        "#303744"
+      )
+      .text(
+        paragraph,
+        x,
+        y,
+        {
+          width,
+
+          lineGap:
+            2,
+        }
+      );
 
 
-  doc.moveDown(
-    1
-  );
+    y =
+      doc.y +
+      13;
+  }
+
+
+  // ====================================================
+  // DISCLAIMER
+  // ====================================================
+
+  y +=
+    15;
 
 
   doc
@@ -1429,57 +2632,82 @@ function writeLegalPage(
       "Helvetica-Bold"
     )
     .fontSize(
-      9
+      15
     )
     .fillColor(
       COLORS.heading
     )
     .text(
-      "Acknowledged:"
+      "Assessment Disclaimer and Limitation of Liability",
+      x,
+      y,
+      {
+        width,
+      }
     );
 
 
-  doc
-    .font(
-      "Helvetica"
-    )
-    .fontSize(
-      9
-    )
-    .fillColor(
-      COLORS.body
-    )
-    .text(
-      formatDateTime(
-        analysis
-          .legal
-          .acknowledgedAt
-      )
-    );
+  y =
+    doc.y +
+    17;
 
 
-  if (
-    analysis
-      .legal
-      .disclaimerVersion
+  const disclaimer = [
+    "This psychometric assessment and the results contained in this report are intended for self-awareness, reflection, and personal development only.",
+
+    "The findings are based on the participant's responses and reported state at the time of completing the assessment. Results are therefore indicative and informational in nature and should not be interpreted as diagnostic conclusions.",
+
+    "This assessment does not constitute, and should not be considered, a medical, psychological, psychiatric, or clinical diagnosis. It does not replace assessment, advice, diagnosis, or treatment provided by a suitably qualified professional.",
+
+    "Assessment results reflect self-reported responses and may be influenced by factors including the participant's interpretation of the questions, circumstances, mood, and responses at the time of testing.",
+
+    "Fathom Marine Consultants and Anandum by Fathom do not guarantee the accuracy, completeness, suitability, or applicability of the assessment results for any specific individual, situation, or decision.",
+
+    "To the fullest extent permitted by applicable law, Fathom Marine Consultants and Anandum by Fathom accept no liability for any decision, action, loss, or consequence arising from reliance solely on the findings contained in this report.",
+
+    "The results should be considered as one source of information and should not be used as the sole basis for medical, psychological, employment, selection, suitability, or other high-stakes decisions.",
+
+    "Where medical, psychological, psychiatric, or other professional advice is required, the participant should consult an appropriately qualified professional.",
+  ];
+
+
+  for (
+    const paragraph
+    of disclaimer
   ) {
     doc
-      .moveDown(
-        0.4
-      )
       .font(
         "Helvetica"
       )
       .fontSize(
-        8.5
+        9.1
       )
       .fillColor(
-        COLORS.body
+        "#303744"
       )
       .text(
-        `Disclaimer version: ${analysis.legal.disclaimerVersion}`
+        paragraph,
+        x,
+        y,
+        {
+          width,
+
+          lineGap:
+            2,
+        }
       );
+
+
+    y =
+      doc.y +
+      12;
   }
+
+
+  drawPageFooter(
+    doc,
+    "Page 3 of 3"
+  );
 }
 
 

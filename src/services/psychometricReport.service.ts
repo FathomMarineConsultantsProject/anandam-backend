@@ -14,49 +14,49 @@ import {
 
 const COLORS = {
   heading:
-    "#111827",
+    "#0C1421",
 
   navy:
-    "#111827",
+    "#01013D",
 
   body:
-    "#5F6470",
+    "#60657C",
 
   muted:
-    "#858A94",
+    "#8F9399",
 
   border:
-    "#D8D8D8",
+    "#D9D9D9",
 
   accent:
     "#8C3422",
 
   gold:
-    "#C99A31",
+    "#B88A32",
 
   paleGold:
-    "#FFF2D4",
+    "#FFF3D8",
 
   soft:
-    "#FBFAF8",
+    "#FAFAFA",
 
   tealCard:
     "#EEF8F7",
 
   tealBorder:
-    "#C9DEDE",
+    "#CDE1DF",
 
   track:
     "#E1E4EE",
 
   purple:
-    "#9177D8",
+    "#8D6FC9",
 
   blue:
-    "#75A0DE",
+    "#7999D9",
 
   cyan:
-    "#6FB5CF",
+    "#6FB1C9",
 
   orange:
     "#E5AE67",
@@ -87,13 +87,18 @@ const REPORT_ASSETS = {
       "header2.png"
     ),
 
-  logo:
+  coverLogo:
     path.join(
       REPORT_ASSET_DIR,
       "logo name.png"
     ),
-};
 
+  smallLogo:
+    path.join(
+      REPORT_ASSET_DIR,
+      "small name logo.png"
+    ),
+};
 
 function assetExists(
   filePath: string
@@ -221,20 +226,30 @@ function drawInnerHeader(
     doc.page.width;
 
 
+  const logoPath =
+    assetExists(
+      REPORT_ASSETS.smallLogo
+    )
+      ? REPORT_ASSETS.smallLogo
+      : REPORT_ASSETS.coverLogo;
+
+
   if (
     assetExists(
-      REPORT_ASSETS.logo
+      logoPath
     )
   ) {
     doc.image(
-      REPORT_ASSETS.logo,
-      24,
-      13,
-      {
-        width:
-          95,
-      }
-    );
+  logoPath,
+  24,
+  10,
+  {
+    fit: [
+      75,
+      18,
+    ],
+  }
+);
   }
 
 
@@ -243,22 +258,25 @@ function drawInnerHeader(
       "Helvetica"
     )
     .fontSize(
-      9
+      10
     )
     .fillColor(
-      "#989AA1"
+      "#8F9399"
     )
     .text(
       assessmentName,
       pageWidth -
-        220,
-      18,
+        111,
+      14,
       {
         width:
-          195,
+          87,
 
         align:
           "right",
+
+        lineBreak:
+          false,
       }
     );
 
@@ -276,7 +294,7 @@ function drawInnerHeader(
       0.7
     )
     .strokeColor(
-      "#DEDEDE"
+      "#D9D9D9"
     )
     .stroke();
 
@@ -285,7 +303,7 @@ function drawInnerHeader(
     24;
 
   doc.y =
-    63;
+    62;
 }
 
 
@@ -293,29 +311,67 @@ function drawPageFooter(
   doc: PDFKit.PDFDocument,
   text: string
 ) {
+  const previousX =
+    doc.x;
+
+  const previousY =
+    doc.y;
+
+  const previousBottomMargin =
+    doc.page.margins.bottom;
+
+
+  /*
+    Figma places the page number at approximately y = 811.
+
+    Temporarily remove PDFKit's bottom-margin restriction so
+    drawing the footer does NOT create another page.
+  */
+
+  doc.page.margins.bottom =
+    0;
+
+
   doc
     .font(
       "Helvetica"
     )
     .fontSize(
-      9
+      10
     )
     .fillColor(
-      "#9699A6"
+      "#808496"
     )
     .text(
       text,
       0,
-      doc.page.height -
-        28,
+      811,
       {
         width:
           doc.page.width,
 
         align:
           "center",
+
+        lineBreak:
+          false,
       }
     );
+
+
+  doc.page.margins.bottom =
+    previousBottomMargin;
+
+
+  /*
+    Do not let footer drawing change the content cursor.
+  */
+
+  doc.x =
+    previousX;
+
+  doc.y =
+    previousY;
 }
 
 
@@ -740,9 +796,6 @@ function writeCover(
   const pageWidth =
     doc.page.width;
 
-  const pageHeight =
-    doc.page.height;
-
   const copy =
     getReportCopy(
       analysis
@@ -750,7 +803,7 @@ function writeCover(
 
 
   // ====================================================
-  // FIGMA TOP WAVE
+  // TOP FIGMA WAVE
   // ====================================================
 
   if (
@@ -759,24 +812,19 @@ function writeCover(
     )
   ) {
     doc.image(
-  REPORT_ASSETS.headerTop,
-  0,
-  0,
-  {
-    fit: [
-      pageWidth,
-      165,
-    ],
-
-    align:
-      "center",
-  }
-);
+      REPORT_ASSETS.headerTop,
+      0,
+      0,
+      {
+        width:
+          pageWidth,
+      }
+    );
   }
 
 
   // ====================================================
-  // FIGMA BOTTOM WAVE
+  // BOTTOM FIGMA WAVE
   // ====================================================
 
   if (
@@ -787,49 +835,54 @@ function writeCover(
     doc.image(
       REPORT_ASSETS.headerBottom,
       0,
-      pageHeight -
-        235,
+      544,
       {
-        fit: [
+        width:
           pageWidth,
-          235,
-        ],
-
-        align:
-          "center",
-
-        valign:
-          "bottom",
       }
     );
   }
 
 
   // ====================================================
-  // REAL ANANDUM LOGO
+  // MAIN ANANDUM LOGO
   // ====================================================
 
   if (
     assetExists(
-      REPORT_ASSETS.logo
+      REPORT_ASSETS.coverLogo
     )
   ) {
+    const logoWidth =
+      133;
+
+    const logoHeight =
+      78;
+
+
     doc.image(
-      REPORT_ASSETS.logo,
-      pageWidth /
-        2 -
-        80,
-      235,
+      REPORT_ASSETS.coverLogo,
+      (
+        pageWidth -
+        logoWidth
+      ) /
+        2,
+      230,
       {
-        width:
-          160,
+        fit: [
+          logoWidth,
+          logoHeight,
+        ],
+
+        align:
+          "center",
       }
     );
   }
 
 
   // ====================================================
-  // REPORT LABEL
+  // ASSESSMENT RESULT REPORT
   // ====================================================
 
   doc
@@ -837,18 +890,19 @@ function writeCover(
       "Helvetica"
     )
     .fontSize(
-      9
+      10
     )
     .fillColor(
-      "#7C7F88"
+      "#5D616B"
     )
     .text(
       "ASSESSMENT RESULT REPORT",
-      0,
-      346,
+      24,
+      347,
       {
         width:
-          pageWidth,
+          pageWidth -
+          48,
 
         align:
           "center",
@@ -857,7 +911,7 @@ function writeCover(
 
 
   // ====================================================
-  // TITLE
+  // REPORT TITLE
   // ====================================================
 
   doc
@@ -872,12 +926,12 @@ function writeCover(
     )
     .text(
       copy.reportTitle,
-      40,
-      371,
+      24,
+      372,
       {
         width:
           pageWidth -
-          80,
+          48,
 
         align:
           "center",
@@ -885,51 +939,56 @@ function writeCover(
     );
 
 
-  // Gold underline
+  // ====================================================
+  // GOLD UNDERLINE
+  // ====================================================
+
   doc
-    .moveTo(
-      pageWidth /
-        2 -
-        32,
-      407
+    .roundedRect(
+      (
+        pageWidth -
+        63
+      ) /
+        2,
+      404,
+      63,
+      3,
+      1.5
     )
-    .lineTo(
-      pageWidth /
-        2 +
-        32,
-      407
-    )
-    .lineWidth(
-      3
-    )
-    .strokeColor(
+    .fill(
       COLORS.gold
-    )
-    .stroke();
+    );
 
 
   // ====================================================
-  // DESCRIPTION
+  // SUBTITLE
   // ====================================================
+
+  const subtitleWidth =
+    350;
+
 
   doc
     .font(
       "Helvetica"
     )
     .fontSize(
-      11
+      12
     )
     .fillColor(
-      COLORS.body
+      "#5D616B"
     )
     .text(
       copy.subtitle,
-      95,
-      424,
+      (
+        pageWidth -
+        subtitleWidth
+      ) /
+        2,
+      420,
       {
         width:
-          pageWidth -
-          190,
+          subtitleWidth,
 
         align:
           "center",
@@ -941,21 +1000,21 @@ function writeCover(
 
 
   // ====================================================
-  // META INFORMATION BOX
+  // PARTICIPANT INFORMATION BOX
   // ====================================================
 
   const boxX =
     24;
 
   const boxY =
-    476;
+    477;
 
   const boxWidth =
     pageWidth -
     48;
 
   const boxHeight =
-    66;
+    68;
 
   const columnWidth =
     boxWidth /
@@ -970,8 +1029,8 @@ function writeCover(
       boxHeight
     )
     .fillAndStroke(
-      "#FCFBF9",
-      "#EEEAE3"
+      "#FAFAFA",
+      "#F8F3EB"
     );
 
 
@@ -1003,19 +1062,23 @@ function writeCover(
   ) {
     const x =
       boxX +
-      columnWidth *
-        index;
+      (
+        columnWidth *
+        index
+      );
 
+
+    // LABEL
 
     doc
       .font(
         "Helvetica"
       )
       .fontSize(
-        9
+        10
       )
       .fillColor(
-        "#808289"
+        "#666666"
       )
       .text(
         labels[
@@ -1023,7 +1086,7 @@ function writeCover(
         ],
         x,
         boxY +
-          16,
+          15,
         {
           width:
             columnWidth,
@@ -1034,12 +1097,14 @@ function writeCover(
       );
 
 
+    // VALUE
+
     doc
       .font(
         "Helvetica-Bold"
       )
       .fontSize(
-        10.5
+        12
       )
       .fillColor(
         COLORS.heading
@@ -1049,21 +1114,34 @@ function writeCover(
           index
         ],
         x +
-          4,
+          5,
         boxY +
-          38,
+          37,
         {
           width:
             columnWidth -
-            8,
+            10,
 
           align:
             "center",
         }
       );
   }
-}
 
+
+  /*
+    Reset cursor.
+
+    This is important because the cover uses
+    absolute positioning.
+  */
+
+  doc.x =
+    24;
+
+  doc.y =
+    560;
+}
 
 function writeProfileAnalytics(
   doc: PDFKit.PDFDocument,

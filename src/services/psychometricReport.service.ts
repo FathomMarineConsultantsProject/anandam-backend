@@ -759,22 +759,19 @@ function writeCover(
     )
   ) {
     doc.image(
-      REPORT_ASSETS.headerTop,
-      0,
-      0,
-      {
-        fit: [
-          pageWidth,
-          165,
-        ],
+  REPORT_ASSETS.headerTop,
+  0,
+  0,
+  {
+    fit: [
+      pageWidth,
+      165,
+    ],
 
-        align:
-          "center",
-
-        valign:
-          "top",
-      }
-    );
+    align:
+      "center",
+  }
+);
   }
 
 
@@ -1967,7 +1964,7 @@ function writeProfileResponsesTable(
 
 
     doc.text(
-      "Q1",
+      "Q",
       x +
         8,
       y +

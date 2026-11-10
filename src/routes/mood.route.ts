@@ -23,62 +23,29 @@ const router =
   Router();
 
 
-// ======================================================
-// CREATE MOOD CHECK-IN
-//
-// QUICK:
-// Free.
-//
-// FULL:
-// Requires active Anandam access.
-// ======================================================
-
+// QUICK is free; FULL requires site access.
 router.post(
   "/log",
-
   authenticateToken,
-
   allowQuickMoodCheckinOrSiteAccess,
-
   createMoodLog
 );
 
 
-// ======================================================
-// MOOD HISTORY
-//
-// ?type=QUICK
-// Free.
-//
-// FULL / no type:
-// Requires active Anandam access.
-// ======================================================
-
+// QUICK history is free; full/all history requires access.
 router.get(
   "/history",
-
   authenticateToken,
-
   allowQuickMoodHistoryOrSiteAccess,
-
   getMyMoodHistory
 );
 
 
-// ======================================================
-// INDIVIDUAL MOOD RECORD
-//
-// Protected because this belongs to the complete
-// Mood feature.
-// ======================================================
-
+// Individual mood details belong to the full Mood feature.
 router.get(
   "/:id",
-
   authenticateToken,
-
   requireSiteAccess,
-
   getMoodLogById
 );
 

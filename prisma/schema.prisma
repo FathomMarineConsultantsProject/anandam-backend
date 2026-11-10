@@ -1456,9 +1456,12 @@ model JournalCustomBlock {
 }
 
 model TokenWallet {
-  id      String @id @default(uuid())
-  userId  String @unique
-  balance Int    @default(0)
+  id     String @id @default(uuid())
+  userId String @unique
+
+  // Supports fractional tokens.
+  // Examples: 30, 1, 0.5, 0.083333.
+  balance Decimal @default(0) @db.Decimal(14, 6)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1474,9 +1477,10 @@ model TokenTransaction {
   type   TokenTransactionType
   source TokenTransactionSource
 
-  amount        Int
-  balanceBefore Int
-  balanceAfter  Int
+  // Keep full token precision in the ledger too.
+  amount        Decimal @db.Decimal(14, 6)
+  balanceBefore Decimal @db.Decimal(14, 6)
+  balanceAfter  Decimal @db.Decimal(14, 6)
 
   featureKey  String?
   referenceId String?
@@ -1492,7 +1496,9 @@ model TokenTransaction {
 }
 
 // ======================================================
-// 30-DAY ANANDAM SITE ACCESS
+// ANANDAM TIME ACCESS
+// 1 token = 1 day by default.
+// The API can also activate fractional-token durations.
 // ======================================================
 
 model SiteAccessPass {
@@ -1501,7 +1507,7 @@ model SiteAccessPass {
   userId String @unique
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  tokensSpent Int
+  tokensSpent Decimal @db.Decimal(14, 6)
 
   startsAt DateTime
   endsAt   DateTime

@@ -63,9 +63,7 @@ export async function getMySiteAccess(
 
         access,
       });
-  } catch (
-    error
-  ) {
+  } catch (error) {
     console.error(
       "getMySiteAccess error:",
       error
@@ -115,9 +113,16 @@ export async function getMySiteAccess(
 
 
 // ======================================================
-// ACTIVATE SITE ACCESS
+// ACTIVATE / EXTEND SITE ACCESS
 //
 // POST /api/site-access/activate
+//
+// Default body can be empty:
+//   30 tokens -> 30 days
+//
+// Optional:
+//   { "tokenAmount": 0.5 }
+//   0.5 token -> 12 hours
 // ======================================================
 
 export async function activateMySiteAccess(
@@ -151,7 +156,8 @@ export async function activateMySiteAccess(
 
     const access =
       await activateSiteAccess(
-        userId
+        userId,
+        req.body?.tokenAmount
       );
 
 
@@ -169,9 +175,7 @@ export async function activateMySiteAccess(
 
         access,
       });
-  } catch (
-    error
-  ) {
+  } catch (error) {
     console.error(
       "activateMySiteAccess error:",
       error

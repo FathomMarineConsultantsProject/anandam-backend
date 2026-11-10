@@ -18,6 +18,8 @@ const router =
   Router();
 
 
+// Authentication is required, but a 30-day site pass is not.
+// Submission itself costs WELLBEING_TOKEN_COST (default: 1 token).
 router.use(
   authenticateToken
 );

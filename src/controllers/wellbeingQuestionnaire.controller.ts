@@ -1,10 +1,61 @@
 import { Response } from "express";
-import { PrismaClient } from "@prisma/client";
+import { Prisma, PrismaClient } from "@prisma/client";
 import { AuthRequest } from "../middleware/auth.middleware";
+
+import {
+  debitTokensInTransaction,
+  TokenServiceError,
+  tokenNumber,
+} from "../services/token.service";
 
 const prisma = new PrismaClient();
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
+const WELLBEING_TOKEN_COST = (() => {
+  const parsed = Number(
+    process.env.WELLBEING_TOKEN_COST ?? 1
+  );
+
+  return Number.isFinite(parsed) && parsed > 0
+    ? parsed
+    : 1;
+})();
+
+async function getWellbeingPaymentInfo(
+  userId: string
+) {
+  const wallet =
+    await prisma.tokenWallet.upsert({
+      where: {
+        userId,
+      },
+
+      update: {},
+
+      create: {
+        userId,
+        balance:
+          new Prisma.Decimal(0),
+      },
+    });
+
+  const walletBalance =
+    tokenNumber(
+      wallet.balance
+    );
+
+  return {
+    requiredTokens:
+      WELLBEING_TOKEN_COST,
+
+    walletBalance,
+
+    hasEnoughTokens:
+      walletBalance >=
+      WELLBEING_TOKEN_COST,
+  };
+}
 
 const getParam = (
   value: string | string[] | undefined
@@ -51,6 +102,22 @@ const buildEligibility = (
     daysRemaining,
   };
 };
+
+class WellbeingEligibilityError extends Error {
+  eligibility: ReturnType<typeof buildEligibility>;
+
+  constructor(
+    eligibility: ReturnType<typeof buildEligibility>
+  ) {
+    super(
+      "You have already completed this questionnaire for the current period."
+    );
+
+    this.name = "WellbeingEligibilityError";
+    this.eligibility = eligibility;
+  }
+}
+
 
 // ======================================================
 // LIST ACTIVE QUESTIONNAIRES
@@ -160,10 +227,16 @@ export const getWellbeingQuestionnaires = async (
         };
       });
 
+    const payment =
+      await getWellbeingPaymentInfo(
+        userId
+      );
+
     return res.status(200).json({
       status: "success",
       count: data.length,
       data,
+      payment,
     });
   } catch (error) {
     console.error("Get wellbeing questionnaires error:", error);
@@ -306,6 +379,11 @@ export const getWellbeingQuestionnaireBySlug = async (
       options: question.options,
     }));
 
+    const payment =
+      await getWellbeingPaymentInfo(
+        userId
+      );
+
     return res.status(200).json({
       status: "success",
 
@@ -325,6 +403,8 @@ export const getWellbeingQuestionnaireBySlug = async (
         },
 
         eligibility: buildEligibility(latestSubmission),
+
+        payment,
 
         questions,
       },
@@ -675,40 +755,158 @@ export const submitWellbeingQuestionnaire = async (
         questionnaire.refillIntervalDays * MS_PER_DAY
     );
 
-    const submission =
-      await prisma.wellbeingSubmission.create({
-        data: {
-          userId,
-          questionnaireId: questionnaire.id,
-          questionnaireVersionId: version.id,
-          submittedAt,
-          nextEligibleAt,
+    let transactionResult:
+      | {
+          submission: {
+            id: string;
+            submittedAt: Date;
+            nextEligibleAt: Date;
+            questionnaireVersionId: string;
+          };
+          walletBalance: number;
+        }
+      | null = null;
 
-          answers: {
-            create: validatedAnswers.map((answer) => ({
-              questionId: answer.questionId,
-              numericValue: answer.numericValue,
-              textValue: answer.textValue,
+    for (
+      let attempt = 0;
+      attempt < 3;
+      attempt += 1
+    ) {
+      try {
+        transactionResult =
+          await prisma.$transaction(
+            async (tx) => {
+              // Re-check eligibility inside the transaction so
+              // simultaneous requests cannot double-submit.
+              const latestInsideTransaction =
+                await tx.wellbeingSubmission.findFirst({
+                  where: {
+                    userId,
+                    questionnaireId: questionnaire.id,
+                  },
 
-              selectedOptions:
-                answer.selectedOptionIds.length > 0
-                  ? {
-                      create: answer.selectedOptionIds.map((optionId) => ({
-                        optionId,
+                  orderBy: {
+                    submittedAt: "desc",
+                  },
+
+                  select: {
+                    submittedAt: true,
+                    nextEligibleAt: true,
+                  },
+                });
+
+              const transactionEligibility =
+                buildEligibility(
+                  latestInsideTransaction
+                );
+
+              if (
+                !transactionEligibility.canSubmit
+              ) {
+                throw new WellbeingEligibilityError(
+                  transactionEligibility
+                );
+              }
+
+              const submission =
+                await tx.wellbeingSubmission.create({
+                  data: {
+                    userId,
+                    questionnaireId: questionnaire.id,
+                    questionnaireVersionId: version.id,
+                    submittedAt,
+                    nextEligibleAt,
+
+                    answers: {
+                      create: validatedAnswers.map((answer) => ({
+                        questionId: answer.questionId,
+                        numericValue: answer.numericValue,
+                        textValue: answer.textValue,
+
+                        selectedOptions:
+                          answer.selectedOptionIds.length > 0
+                            ? {
+                                create: answer.selectedOptionIds.map((optionId) => ({
+                                  optionId,
+                                })),
+                              }
+                            : undefined,
                       })),
-                    }
-                  : undefined,
-            })),
-          },
-        },
+                    },
+                  },
 
-        select: {
-          id: true,
-          submittedAt: true,
-          nextEligibleAt: true,
-          questionnaireVersionId: true,
-        },
-      });
+                  select: {
+                    id: true,
+                    submittedAt: true,
+                    nextEligibleAt: true,
+                    questionnaireVersionId: true,
+                  },
+                });
+
+              // Charge exactly once, in the SAME transaction
+              // as the successful questionnaire submission.
+              const updatedWallet =
+                await debitTokensInTransaction(
+                  tx,
+                  {
+                    userId,
+                    amount:
+                      WELLBEING_TOKEN_COST,
+                    featureKey:
+                      "WELLBEING_QUESTIONNAIRE",
+                    referenceId:
+                      submission.id,
+                    reason:
+                      `Wellbeing questionnaire submission: ${questionnaire.slug}`,
+                  }
+                );
+
+              return {
+                submission,
+                walletBalance:
+                  tokenNumber(
+                    updatedWallet.balance
+                  ),
+              };
+            },
+            {
+              isolationLevel:
+                Prisma
+                  .TransactionIsolationLevel
+                  .Serializable,
+            }
+          );
+
+        break;
+      } catch (error) {
+        const retryable =
+          error instanceof
+            Prisma
+              .PrismaClientKnownRequestError &&
+          error.code ===
+            "P2034";
+
+        if (
+          retryable &&
+          attempt < 2
+        ) {
+          continue;
+        }
+
+        throw error;
+      }
+    }
+
+    if (!transactionResult) {
+      throw new Error(
+        "Unable to save wellbeing questionnaire transaction."
+      );
+    }
+
+    const {
+      submission,
+      walletBalance,
+    } = transactionResult;
 
     return res.status(201).json({
       status: "success",
@@ -730,11 +928,55 @@ export const submitWellbeingQuestionnaire = async (
           daysRemaining: questionnaire.refillIntervalDays,
         },
 
+        payment: {
+          tokenCost:
+            WELLBEING_TOKEN_COST,
+          tokensSpent:
+            WELLBEING_TOKEN_COST,
+          walletBalance,
+        },
+
         supportPromptRecommended,
       },
     });
   } catch (error) {
     console.error("Submit wellbeing questionnaire error:", error);
+
+    if (
+      error instanceof
+      TokenServiceError
+    ) {
+      return res
+        .status(
+          error.statusCode
+        )
+        .json({
+          status: "error",
+          code: error.code,
+          message:
+            error.code === "INSUFFICIENT_TOKENS"
+              ? `You need ${WELLBEING_TOKEN_COST} token to submit this wellbeing questionnaire.`
+              : error.message,
+          ...(error.details || {}),
+          requiredTokens:
+            WELLBEING_TOKEN_COST,
+        });
+    }
+
+    if (
+      error instanceof
+      WellbeingEligibilityError
+    ) {
+      return res.status(409).json({
+        status: "error",
+        code:
+          "WELLBEING_NOT_ELIGIBLE",
+        error:
+          error.message,
+        eligibility:
+          error.eligibility,
+      });
+    }
 
     return res.status(500).json({
       error: "Failed to submit wellbeing questionnaire",

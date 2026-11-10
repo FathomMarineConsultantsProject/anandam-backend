@@ -238,9 +238,11 @@ app.use(
 // ======================================================
 // WELLBEING QUESTIONNAIRES
 //
-// FREE
+// PAY-PER-SUBMISSION FEATURE
 //
-// Existing questionnaire eligibility rules still apply.
+// No site-access pass is required to load the questionnaire.
+// A successful submission deducts WELLBEING_TOKEN_COST
+// (1 token by default) inside the same DB transaction.
 // ======================================================
 
 app.use(
@@ -252,17 +254,15 @@ app.use(
 // ======================================================
 // PSYCHOMETRIC TESTS
 //
-// IMPORTANT:
-//
-// DO NOT apply SiteAccess here.
-//
-// Psychometrics already have their own token/free-attempt
-// payment rules.
-// Applying SiteAccess here would cause double charging.
+// Requires active Anandam site access.
+// Existing psychometric attempt/token charges still remain
+// separate and continue to work inside the psychometric flow.
 // ======================================================
 
 app.use(
   "/api/psychometrics",
+  authenticateToken,
+  requireSiteAccess,
   psychometricRoutes
 );
 
@@ -278,8 +278,6 @@ app.use(
 
 app.use(
   "/api/mood",
-  authenticateToken,
-  requireSiteAccess,
   moodRoutes
 );
 

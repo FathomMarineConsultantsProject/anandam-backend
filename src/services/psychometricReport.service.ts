@@ -413,6 +413,62 @@ function getDimensionColor(
   ];
 }
 
+
+function hasBigFiveRadarPage(
+  analysis: any
+) {
+  return (
+    analysis?.resultKind !==
+      "MARITIME_SCORED" &&
+    analysis?.test?.type ===
+      "BIG_FIVE"
+  );
+}
+
+
+function profileReportPageTotal(
+  analysis: any
+) {
+  return hasBigFiveRadarPage(
+    analysis
+  )
+    ? 4
+    : 3;
+}
+
+
+function getDimensionPercentageByKey(
+  analysis: any,
+  key: string
+) {
+  const dimensions =
+    Array.isArray(
+      analysis?.dimensions
+    )
+      ? analysis.dimensions
+      : [];
+
+
+  const dimension =
+    dimensions.find(
+      (item: any) =>
+        item?.key ===
+        key
+    );
+
+
+  return Math.max(
+    0,
+    Math.min(
+      100,
+      Number(
+        dimension?.percentage ??
+          0
+      )
+    )
+  );
+}
+
 function formatDateTime(
   value:
     | string
@@ -1843,7 +1899,798 @@ doc
 
   drawPageFooter(
     doc,
-    "Page 1 of 3"
+    `Page 1 of ${profileReportPageTotal(
+      analysis
+    )}`
+  );
+}
+
+
+function writeProfileRadarPage(
+  doc: PDFKit.PDFDocument,
+  analysis: any
+) {
+  doc.addPage();
+
+
+  const copy =
+    getReportCopy(
+      analysis
+    );
+
+
+  drawInnerHeader(
+    doc,
+    copy.assessmentName
+  );
+
+
+  const pageWidth =
+    doc.page.width;
+
+  const contentX =
+    24;
+
+  const contentWidth =
+    pageWidth -
+    48;
+
+
+  // ====================================================
+  // PERSONALITY INSIGHT HEADER
+  // Repeats the Figma summary above the radar only.
+  // Existing analytics page remains untouched.
+  // ====================================================
+
+  doc
+    .font(
+      "Helvetica-Bold"
+    )
+    .fontSize(
+      13
+    )
+    .fillColor(
+      COLORS.heading
+    )
+    .text(
+      copy.insightTitle,
+      contentX,
+      66
+    );
+
+
+  const insightY =
+    87;
+
+
+  doc
+    .moveTo(
+      contentX,
+      insightY
+    )
+    .lineTo(
+      contentX,
+      insightY +
+        67
+    )
+    .lineWidth(
+      2
+    )
+    .strokeColor(
+      COLORS.gold
+    )
+    .stroke();
+
+
+  doc
+    .font(
+      "Helvetica-Bold"
+    )
+    .fontSize(
+      10.5
+    )
+    .fillColor(
+      COLORS.heading
+    )
+    .text(
+      analysis?.analysis
+        ?.headline ||
+        "Your assessment profile is ready.",
+      contentX +
+        12,
+      insightY +
+        4,
+      {
+        width:
+          contentWidth -
+          18,
+      }
+    );
+
+
+  doc
+    .font(
+      "Helvetica"
+    )
+    .fontSize(
+      8.8
+    )
+    .fillColor(
+      COLORS.body
+    )
+    .text(
+      analysis?.analysis
+        ?.summary ||
+        "",
+      contentX +
+        12,
+      insightY +
+        26,
+      {
+        width:
+          contentWidth -
+          18,
+
+        lineGap:
+          2,
+      }
+    );
+
+
+  // ====================================================
+  // TOP 3 CARDS
+  // Same values and styling as the existing analytics page.
+  // ====================================================
+
+  const cards =
+    Array.isArray(
+      analysis?.analysis
+        ?.topDimensions
+    )
+      ? analysis.analysis
+          .topDimensions
+          .slice(
+            0,
+            3
+          )
+      : [];
+
+
+  const cardsY =
+    178;
+
+  const cardGap =
+    16;
+
+  const cardWidth =
+    (
+      contentWidth -
+      cardGap *
+        2
+    ) /
+    3;
+
+  const cardHeight =
+    101;
+
+
+  cards.forEach(
+    (
+      card: any,
+      index: number
+    ) => {
+      const x =
+        contentX +
+        index *
+          (
+            cardWidth +
+            cardGap
+          );
+
+
+      doc
+        .roundedRect(
+          x,
+          cardsY,
+          cardWidth,
+          cardHeight,
+          8
+        )
+        .fillAndStroke(
+          COLORS.tealCard,
+          COLORS.tealBorder
+        );
+
+
+      doc
+        .font(
+          "Helvetica-Bold"
+        )
+        .fontSize(
+          11
+        )
+        .fillColor(
+          COLORS.heading
+        )
+        .text(
+          card.title ||
+            card.label ||
+            "",
+          x +
+            18,
+          cardsY +
+            18,
+          {
+            width:
+              cardWidth -
+              36,
+          }
+        );
+
+
+      const numericPercentage =
+        Number(
+          card.percentage ??
+            0
+        );
+
+
+      doc
+        .font(
+          "Helvetica-Bold"
+        )
+        .fontSize(
+          18
+        )
+        .fillColor(
+          COLORS.heading
+        )
+        .text(
+          `${numericPercentage.toFixed(
+            Number.isInteger(
+              numericPercentage
+            )
+              ? 0
+              : 1
+          )}%`,
+          x +
+            18,
+          cardsY +
+            58
+        );
+
+
+      doc
+        .font(
+          "Helvetica"
+        )
+        .fontSize(
+          8
+        )
+        .fillColor(
+          "#3D4550"
+        )
+        .text(
+          card.label ||
+            "",
+          x +
+            cardWidth /
+              2,
+          cardsY +
+            65,
+          {
+            width:
+              cardWidth /
+                2 -
+              18,
+
+            align:
+              "right",
+          }
+        );
+    }
+  );
+
+
+  // ====================================================
+  // RADAR PROFILE BOX
+  // ====================================================
+
+  const boxY =
+    295;
+
+  const boxHeight =
+    406;
+
+
+  doc
+    .roundedRect(
+      contentX,
+      boxY,
+      contentWidth,
+      boxHeight,
+      8
+    )
+    .lineWidth(
+      0.7
+    )
+    .strokeColor(
+      "#CFCFCF"
+    )
+    .stroke();
+
+
+  doc
+    .font(
+      "Helvetica-Bold"
+    )
+    .fontSize(
+      12
+    )
+    .fillColor(
+      COLORS.heading
+    )
+    .text(
+      "Your Personality Profile",
+      contentX +
+        25,
+      boxY +
+        23
+    );
+
+
+  doc
+    .font(
+      "Helvetica"
+    )
+    .fontSize(
+      10
+    )
+    .fillColor(
+      "#9498A7"
+    )
+    .text(
+      "Your five dimensions at a glance",
+      contentX +
+        25,
+      boxY +
+        42
+    );
+
+
+  const axisDefinitions = [
+    {
+      key:
+        "CONSCIENTIOUSNESS",
+      label:
+        "Diligence",
+    },
+    {
+      key:
+        "EMOTIONAL_STABILITY",
+      label:
+        "Composure",
+    },
+    {
+      key:
+        "OPENNESS",
+      label:
+        "Curiosity",
+    },
+    {
+      key:
+        "AGREEABLENESS",
+      label:
+        "Cooperativeness",
+    },
+    {
+      key:
+        "EXTRAVERSION",
+      label:
+        "Sociability",
+    },
+  ];
+
+
+  const centerX =
+    pageWidth /
+    2;
+
+  const centerY =
+    515;
+
+  const outerRadius =
+    116;
+
+  const axisCount =
+    axisDefinitions.length;
+
+
+  function radarPoint(
+    radius: number,
+    index: number
+  ) {
+    const angle =
+      -Math.PI /
+        2 +
+      (
+        index *
+        Math.PI *
+        2
+      ) /
+        axisCount;
+
+
+    return {
+      x:
+        centerX +
+        Math.cos(
+          angle
+        ) *
+          radius,
+
+      y:
+        centerY +
+        Math.sin(
+          angle
+        ) *
+          radius,
+    };
+  }
+
+
+  function tracePolygon(
+    points: Array<{
+      x: number;
+      y: number;
+    }>
+  ) {
+    if (
+      points.length ===
+      0
+    ) {
+      return;
+    }
+
+
+    doc.moveTo(
+      points[0].x,
+      points[0].y
+    );
+
+
+    for (
+      let index = 1;
+      index <
+      points.length;
+      index += 1
+    ) {
+      doc.lineTo(
+        points[index].x,
+        points[index].y
+      );
+    }
+
+
+    doc.closePath();
+  }
+
+
+  const outerPoints =
+    axisDefinitions.map(
+      (
+        _axis,
+        index
+      ) =>
+        radarPoint(
+          outerRadius,
+          index
+        )
+    );
+
+
+  doc.save();
+
+  tracePolygon(
+    outerPoints
+  );
+
+  doc
+    .fillColor(
+      "#F4F6FA"
+    )
+    .strokeColor(
+      "#C5CAD4"
+    )
+    .lineWidth(
+      0.8
+    )
+    .fillAndStroke();
+
+  doc.restore();
+
+
+  // Nested 20/40/60/80/100 rings.
+  for (
+    let level = 1;
+    level <=
+    5;
+    level += 1
+  ) {
+    const levelRadius =
+      outerRadius *
+      (
+        level /
+        5
+      );
+
+    const levelPoints =
+      axisDefinitions.map(
+        (
+          _axis,
+          index
+        ) =>
+          radarPoint(
+            levelRadius,
+            index
+          )
+      );
+
+
+    tracePolygon(
+      levelPoints
+    );
+
+    doc
+      .lineWidth(
+        level ===
+          5
+          ? 0.8
+          : 0.55
+      )
+      .strokeColor(
+        "#C5CAD4"
+      )
+      .stroke();
+  }
+
+
+  // Axis spokes.
+  outerPoints.forEach(
+    (point) => {
+      doc
+        .moveTo(
+          centerX,
+          centerY
+        )
+        .lineTo(
+          point.x,
+          point.y
+        )
+        .lineWidth(
+          0.55
+        )
+        .strokeColor(
+          "#C5CAD4"
+        )
+        .stroke();
+    }
+  );
+
+
+  // Scale values along the upper axis.
+  [
+    100,
+    80,
+    60,
+    40,
+    20,
+    0,
+  ].forEach(
+    (value) => {
+      const ratio =
+        value /
+        100;
+
+      const y =
+        centerY -
+        outerRadius *
+          ratio -
+        4;
+
+
+      doc
+        .font(
+          "Helvetica"
+        )
+        .fontSize(
+          6.2
+        )
+        .fillColor(
+          "#8F9399"
+        )
+        .text(
+          String(
+            value
+          ),
+          centerX +
+            4,
+          y,
+          {
+            width:
+              22,
+
+            lineBreak:
+              false,
+          }
+        );
+    }
+  );
+
+
+  const radarValues =
+    axisDefinitions.map(
+      (axis) =>
+        getDimensionPercentageByKey(
+          analysis,
+          axis.key
+        )
+    );
+
+
+  const valuePoints =
+    radarValues.map(
+      (
+        value,
+        index
+      ) =>
+        radarPoint(
+          outerRadius *
+            (
+              value /
+              100
+            ),
+          index
+        )
+    );
+
+
+  doc.save();
+
+  tracePolygon(
+    valuePoints
+  );
+
+  doc
+    .fillColor(
+      "#7086FD"
+    )
+    .fillOpacity(
+      0.34
+    )
+    .strokeColor(
+      "#7086FD"
+    )
+    .strokeOpacity(
+      1
+    )
+    .lineWidth(
+      1.3
+    )
+    .fillAndStroke();
+
+  doc.restore();
+
+
+  valuePoints.forEach(
+    (point) => {
+      doc
+        .circle(
+          point.x,
+          point.y,
+          2.5
+        )
+        .fill(
+          "#7086FD"
+        );
+    }
+  );
+
+
+  // ====================================================
+  // RADAR AXIS LABELS
+  // ====================================================
+
+  doc
+    .font(
+      "Helvetica"
+    )
+    .fontSize(
+      8.5
+    )
+    .fillColor(
+      "#4D515A"
+    );
+
+
+  doc.text(
+    "Diligence",
+    centerX -
+      45,
+    centerY -
+      outerRadius -
+      28,
+    {
+      width:
+        90,
+
+      align:
+        "center",
+    }
+  );
+
+
+  doc.text(
+    "Composure",
+    centerX +
+      103,
+    centerY -
+      46,
+    {
+      width:
+        90,
+    }
+  );
+
+
+  doc.text(
+    "Curiosity",
+    centerX +
+      77,
+    centerY +
+      111,
+    {
+      width:
+        90,
+    }
+  );
+
+
+  doc.text(
+    "Cooperativeness",
+    centerX -
+      188,
+    centerY +
+      111,
+    {
+      width:
+        110,
+
+      align:
+        "right",
+    }
+  );
+
+
+  doc.text(
+    "Sociability",
+    centerX -
+      193,
+    centerY -
+      46,
+    {
+      width:
+        90,
+
+      align:
+        "right",
+    }
+  );
+
+
+  drawPageFooter(
+    doc,
+    "Page 2 of 4"
   );
 }
 
@@ -2377,9 +3224,19 @@ function writeProfileResponsesTable(
   }
 
 
+  const responsePageNumber =
+    hasBigFiveRadarPage(
+      analysis
+    )
+      ? 3
+      : 2;
+
+
   drawPageFooter(
     doc,
-    "Page 2 of 3"
+    `Page ${responsePageNumber} of ${profileReportPageTotal(
+      analysis
+    )}`
   );
 }
 
@@ -2826,9 +3683,19 @@ function writeLegalPage(
   }
 
 
+  const legalPageNumber =
+    hasBigFiveRadarPage(
+      analysis
+    )
+      ? 4
+      : 3;
+
+
   drawPageFooter(
     doc,
-    "Page 3 of 3"
+    `Page ${legalPageNumber} of ${profileReportPageTotal(
+      analysis
+    )}`
   );
 
   // ====================================================
@@ -3036,6 +3903,18 @@ export async function generatePsychometricReport(
           );
         } else {
           writeProfileAnalytics(
+            document,
+            analysis
+          );
+        }
+
+
+        if (
+          hasBigFiveRadarPage(
+            analysis
+          )
+        ) {
+          writeProfileRadarPage(
             document,
             analysis
           );

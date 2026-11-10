@@ -12,7 +12,7 @@ import {
 
 const prisma =
   new PrismaClient();
-// ======================================================
+  // ======================================================
 // ASSESSMENT DISCLAIMER
 // ======================================================
 
@@ -43,7 +43,7 @@ I understand and acknowledge that this assessment is intended for indicative and
 I confirm that I have read and understood the Assessment Disclaimer and Limitation of Liability.
 `.trim();
 
-
+  
 export class PsychometricError
   extends Error {
   statusCode: number;
@@ -1255,9 +1255,9 @@ export async function startPsychometricAttempt(
           freeAttempt
             ? 0
             : Number(
-              test.repeatTokenCost ||
-              0
-            );
+                test.repeatTokenCost ||
+                  0
+              );
 
 
         // -----------------------------------------------
@@ -1273,8 +1273,10 @@ export async function startPsychometricAttempt(
 
 
         const walletBalance =
-          wallet?.balance ??
-          0;
+          Number(
+            wallet?.balance ??
+            0
+          );
 
 
         // =================================================
@@ -1300,7 +1302,7 @@ export async function startPsychometricAttempt(
             walletBalance,
 
             hasEnoughTokens:
-              Number(walletBalance) >=
+              walletBalance >=
               tokenCost,
 
             attemptNumber,
@@ -1323,8 +1325,8 @@ export async function startPsychometricAttempt(
         if (
           tokenCost > 0 &&
           confirmTokenSpend &&
-          Number(walletBalance) <
-          tokenCost
+          walletBalance <
+            tokenCost
         ) {
           return {
             paymentRequired:
@@ -1374,26 +1376,26 @@ export async function startPsychometricAttempt(
           });
 
 
-        await tx.psychometricDisclaimerAcknowledgement.create({
-          data: {
-            userId,
+          await tx.psychometricDisclaimerAcknowledgement.create({
+  data: {
+    userId,
 
-            testId:
-              test.id,
+    testId:
+      test.id,
 
-            attemptId:
-              created.id,
+    attemptId:
+      created.id,
 
-            disclaimerVersion:
-              PSYCHOMETRIC_DISCLAIMER_VERSION,
+    disclaimerVersion:
+      PSYCHOMETRIC_DISCLAIMER_VERSION,
 
-            disclaimerTextSnapshot:
-              PSYCHOMETRIC_DISCLAIMER_TEXT,
+    disclaimerTextSnapshot:
+      PSYCHOMETRIC_DISCLAIMER_TEXT,
 
-            acknowledgementTextSnapshot:
-              PSYCHOMETRIC_ACKNOWLEDGEMENT_TEXT,
-          },
-        });
+    acknowledgementTextSnapshot:
+      PSYCHOMETRIC_ACKNOWLEDGEMENT_TEXT,
+  },
+});
 
 
         // =================================================
@@ -1736,55 +1738,55 @@ export async function getPsychometricAttempt(
     questions:
       disclaimerAccepted
         ? attempt.questions.map(
-          (item) => {
-            const safeQuestion =
-              sanitizeQuestion(
-                item.question
-              );
+        (item) => {
+          const safeQuestion =
+            sanitizeQuestion(
+              item.question
+            );
 
-            return {
-              // ID of PsychometricAttemptQuestion
-              id:
-                item.id,
+          return {
+            // ID of PsychometricAttemptQuestion
+            id:
+              item.id,
 
-              attemptQuestionId:
-                item.id,
+            attemptQuestionId:
+              item.id,
 
-              // ID of original PsychometricQuestion
-              questionId:
-                item.questionId,
+            // ID of original PsychometricQuestion
+            questionId:
+              item.questionId,
 
-              questionOrder:
-                item.questionOrder,
+            questionOrder:
+              item.questionOrder,
 
-              sectionCode:
-                item.sectionCode,
+            sectionCode:
+              item.sectionCode,
 
-              selectedOption:
-                item.selectedOption,
+            selectedOption:
+              item.selectedOption,
 
-              likertValue:
-                item.likertValue,
+            likertValue:
+              item.likertValue,
 
-              answeredAt:
-                item.answeredAt,
+            answeredAt:
+              item.answeredAt,
 
-              // -------------------------------
-              // FLAT FORMAT
-              // -------------------------------
+            // -------------------------------
+            // FLAT FORMAT
+            // -------------------------------
 
-              ...safeQuestion,
+            ...safeQuestion,
 
-              // -------------------------------
-              // NESTED FORMAT
-              // backwards compatibility
-              // -------------------------------
+            // -------------------------------
+            // NESTED FORMAT
+            // backwards compatibility
+            // -------------------------------
 
-              question:
-                safeQuestion,
-            };
-          }
-        )
+            question:
+              safeQuestion,
+          };
+        }
+      )
         : [],
   };
 }
@@ -3162,172 +3164,172 @@ export async function unlockPsychometricAnswers(
       // ==================================================
 
       const answers =
-        attempt.questions.map(
+  attempt.questions.map(
+    (
+      item,
+      index
+    ) => {
+      const question =
+        item.question;
+
+
+      const selectedOption =
+        item.selectedOption;
+
+
+      const correctOption =
+        question.correctOption;
+
+
+      const optionMap: Record<
+        string,
+        string | null
+      > = {
+        A:
+          question.optionA,
+
+        B:
+          question.optionB,
+
+        C:
+          question.optionC,
+
+        D:
+          question.optionD,
+      };
+
+
+      return {
+        id:
+          item.id,
+
+        attemptQuestionId:
+          item.id,
+
+        questionId:
+          item.questionId,
+
+        questionNumber:
+          index + 1,
+
+        questionOrder:
+          item.questionOrder,
+
+        sectionCode:
+          item.sectionCode,
+
+        itemCode:
+          question.itemCode,
+
+        domain:
+          question.domain,
+
+        competency:
+          question.competency,
+
+        questionText:
+          question.questionText,
+
+
+        // ==========================================
+        // ALL FOUR OPTIONS
+        // ==========================================
+
+        optionA:
+          question.optionA,
+
+        optionB:
+          question.optionB,
+
+        optionC:
+          question.optionC,
+
+        optionD:
+          question.optionD,
+
+
+        // Normalized options array for frontend
+        options: [
+          {
+            key: "A",
+            value: "A",
+            text:
+              question.optionA,
+            label:
+              question.optionA,
+          },
+
+          {
+            key: "B",
+            value: "B",
+            text:
+              question.optionB,
+            label:
+              question.optionB,
+          },
+
+          {
+            key: "C",
+            value: "C",
+            text:
+              question.optionC,
+            label:
+              question.optionC,
+          },
+
+          {
+            key: "D",
+            value: "D",
+            text:
+              question.optionD,
+            label:
+              question.optionD,
+          },
+        ].filter(
           (
-            item,
-            index
-          ) => {
-            const question =
-              item.question;
+            option
+          ) =>
+            Boolean(
+              option.text
+            )
+        ),
 
 
-            const selectedOption =
-              item.selectedOption;
+        // ==========================================
+        // USER ANSWER
+        // ==========================================
 
+        selectedOption,
 
-            const correctOption =
-              question.correctOption;
-
-
-            const optionMap: Record<
-              string,
-              string | null
-            > = {
-              A:
-                question.optionA,
-
-              B:
-                question.optionB,
-
-              C:
-                question.optionC,
-
-              D:
-                question.optionD,
-            };
-
-
-            return {
-              id:
-                item.id,
-
-              attemptQuestionId:
-                item.id,
-
-              questionId:
-                item.questionId,
-
-              questionNumber:
-                index + 1,
-
-              questionOrder:
-                item.questionOrder,
-
-              sectionCode:
-                item.sectionCode,
-
-              itemCode:
-                question.itemCode,
-
-              domain:
-                question.domain,
-
-              competency:
-                question.competency,
-
-              questionText:
-                question.questionText,
-
-
-              // ==========================================
-              // ALL FOUR OPTIONS
-              // ==========================================
-
-              optionA:
-                question.optionA,
-
-              optionB:
-                question.optionB,
-
-              optionC:
-                question.optionC,
-
-              optionD:
-                question.optionD,
-
-
-              // Normalized options array for frontend
-              options: [
-                {
-                  key: "A",
-                  value: "A",
-                  text:
-                    question.optionA,
-                  label:
-                    question.optionA,
-                },
-
-                {
-                  key: "B",
-                  value: "B",
-                  text:
-                    question.optionB,
-                  label:
-                    question.optionB,
-                },
-
-                {
-                  key: "C",
-                  value: "C",
-                  text:
-                    question.optionC,
-                  label:
-                    question.optionC,
-                },
-
-                {
-                  key: "D",
-                  value: "D",
-                  text:
-                    question.optionD,
-                  label:
-                    question.optionD,
-                },
-              ].filter(
-                (
-                  option
-                ) =>
-                  Boolean(
-                    option.text
-                  )
-              ),
-
-
-              // ==========================================
-              // USER ANSWER
-              // ==========================================
-
-              selectedOption,
-
-              selectedOptionText:
+        selectedOptionText:
+          selectedOption
+            ? optionMap[
                 selectedOption
-                  ? optionMap[
-                  selectedOption
-                  ] ||
-                  null
-                  : null,
+              ] ||
+              null
+            : null,
 
 
-              // ==========================================
-              // CORRECT ANSWER
-              // ==========================================
+        // ==========================================
+        // CORRECT ANSWER
+        // ==========================================
 
-              correctOption,
+        correctOption,
 
-              correctOptionText:
+        correctOptionText:
+          correctOption
+            ? optionMap[
                 correctOption
-                  ? optionMap[
-                  correctOption
-                  ] ||
-                  null
-                  : null,
+              ] ||
+              null
+            : null,
 
 
-              isCorrect:
-                item.isCorrect,
-            };
-          }
-        );
+        isCorrect:
+          item.isCorrect,
+      };
+    }
+  );
 
 
       return {
@@ -3393,8 +3395,8 @@ export async function getPsychometricDisclaimer(
     const canAcknowledgeAt =
       new Date(
         presentedAt.getTime() +
-        PSYCHOMETRIC_DISCLAIMER_WAIT_SECONDS *
-        1000
+          PSYCHOMETRIC_DISCLAIMER_WAIT_SECONDS *
+            1000
       );
 
     acknowledgement =
@@ -3417,14 +3419,14 @@ export async function getPsychometricDisclaimer(
     acknowledgement.accepted
       ? 0
       : Math.max(
-        0,
-        Math.ceil(
-          (
-            acknowledgement.canAcknowledgeAt!.getTime() -
-            serverTime.getTime()
-          ) / 1000
-        )
-      );
+          0,
+          Math.ceil(
+            (
+              acknowledgement.canAcknowledgeAt!.getTime() -
+              serverTime.getTime()
+            ) / 1000
+          )
+        );
 
   return {
     attemptId,
@@ -3519,8 +3521,8 @@ export async function acknowledgePsychometricDisclaimer(
     const canAcknowledgeAt =
       new Date(
         presentedAt.getTime() +
-        PSYCHOMETRIC_DISCLAIMER_WAIT_SECONDS *
-        1000
+          PSYCHOMETRIC_DISCLAIMER_WAIT_SECONDS *
+            1000
       );
 
     acknowledgement =
@@ -3555,9 +3557,10 @@ export async function acknowledgePsychometricDisclaimer(
       );
 
     throw new PsychometricError(
-      `Please review the disclaimer before continuing. ${secondsRemaining} second${secondsRemaining === 1
-        ? ""
-        : "s"
+      `Please review the disclaimer before continuing. ${secondsRemaining} second${
+        secondsRemaining === 1
+          ? ""
+          : "s"
       } remaining.`,
       409,
       "DISCLAIMER_WAIT_REQUIRED",

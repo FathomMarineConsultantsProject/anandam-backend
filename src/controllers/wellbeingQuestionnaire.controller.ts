@@ -1,3 +1,4 @@
+import { randomUUID } from "crypto";
 import { Response } from "express";
 import { Prisma, PrismaClient } from "@prisma/client";
 import { AuthRequest } from "../middleware/auth.middleware";
@@ -7,6 +8,10 @@ import {
   TokenServiceError,
   tokenNumber,
 } from "../services/token.service";
+
+import {
+  hasActiveSiteAccess,
+} from "../services/siteAccess.service";
 
 const prisma = new PrismaClient();
 
@@ -56,6 +61,174 @@ async function getWellbeingPaymentInfo(
       WELLBEING_TOKEN_COST,
   };
 }
+
+// ======================================================
+// UNLOCK WELLBEING ENTRY
+//
+// POST /api/wellbeing-questionnaires/access
+//
+// Active Anandam site pass:
+// - included, no token charged.
+//
+// No site pass:
+// - deduct WELLBEING_TOKEN_COST (default 1 token).
+// - frontend keeps this grant only for the current
+//   continuous visit to /app/wellbeing.
+// ======================================================
+
+export const unlockWellbeingAccess = async (
+  req: AuthRequest,
+  res: Response
+): Promise<any> => {
+  try {
+    const userId =
+      req.user?.userId;
+
+    if (!userId) {
+      return res
+        .status(401)
+        .json({
+          status: "error",
+          code: "UNAUTHORIZED",
+          message: "Please sign in to continue.",
+        });
+    }
+
+    const siteAccessActive =
+      await hasActiveSiteAccess(
+        userId
+      );
+
+    if (siteAccessActive) {
+      const payment =
+        await getWellbeingPaymentInfo(
+          userId
+        );
+
+      return res
+        .status(200)
+        .json({
+          status: "success",
+          access: {
+            granted: true,
+            accessType: "SITE_ACCESS_PASS",
+            tokenCost: WELLBEING_TOKEN_COST,
+            tokensSpent: 0,
+            walletBalance: payment.walletBalance,
+          },
+        });
+    }
+
+    const entryId =
+      randomUUID();
+
+    let updatedWallet = null;
+
+    for (
+      let attempt = 0;
+      attempt < 3;
+      attempt += 1
+    ) {
+      try {
+        updatedWallet =
+          await prisma.$transaction(
+            async (tx) => {
+              return debitTokensInTransaction(
+                tx,
+                {
+                  userId,
+                  amount: WELLBEING_TOKEN_COST,
+                  featureKey: "WELLBEING_ACCESS",
+                  referenceId: entryId,
+                  reason: "Wellbeing area access",
+                }
+              );
+            },
+            {
+              isolationLevel:
+                Prisma
+                  .TransactionIsolationLevel
+                  .Serializable,
+            }
+          );
+
+        break;
+      } catch (error) {
+        const retryable =
+          error instanceof
+            Prisma
+              .PrismaClientKnownRequestError &&
+          error.code === "P2034";
+
+        if (
+          retryable &&
+          attempt < 2
+        ) {
+          continue;
+        }
+
+        throw error;
+      }
+    }
+
+    if (!updatedWallet) {
+      throw new Error(
+        "Unable to unlock wellbeing access."
+      );
+    }
+
+    return res
+      .status(200)
+      .json({
+        status: "success",
+        access: {
+          granted: true,
+          accessType: "TOKEN_ENTRY",
+          entryId,
+          tokenCost: WELLBEING_TOKEN_COST,
+          tokensSpent: WELLBEING_TOKEN_COST,
+          walletBalance:
+            tokenNumber(
+              updatedWallet.balance
+            ),
+        },
+      });
+  } catch (error) {
+    console.error(
+      "Unlock wellbeing access error:",
+      error
+    );
+
+    if (
+      error instanceof
+      TokenServiceError
+    ) {
+      return res
+        .status(
+          error.statusCode
+        )
+        .json({
+          status: "error",
+          code: error.code,
+          message:
+            error.code === "INSUFFICIENT_TOKENS"
+              ? `You need ${WELLBEING_TOKEN_COST} token to access Wellbeing.`
+              : error.message,
+          ...(error.details || {}),
+          requiredTokens: WELLBEING_TOKEN_COST,
+        });
+    }
+
+    return res
+      .status(500)
+      .json({
+        status: "error",
+        code: "WELLBEING_ACCESS_FAILED",
+        message: "Unable to unlock Wellbeing access.",
+      });
+  }
+};
+
 
 const getParam = (
   value: string | string[] | undefined
@@ -755,15 +928,12 @@ export const submitWellbeingQuestionnaire = async (
         questionnaire.refillIntervalDays * MS_PER_DAY
     );
 
-    let transactionResult:
+    let submission:
       | {
-          submission: {
-            id: string;
-            submittedAt: Date;
-            nextEligibleAt: Date;
-            questionnaireVersionId: string;
-          };
-          walletBalance: number;
+          id: string;
+          submittedAt: Date;
+          nextEligibleAt: Date;
+          questionnaireVersionId: string;
         }
       | null = null;
 
@@ -773,7 +943,7 @@ export const submitWellbeingQuestionnaire = async (
       attempt += 1
     ) {
       try {
-        transactionResult =
+        submission =
           await prisma.$transaction(
             async (tx) => {
               // Re-check eligibility inside the transaction so
@@ -808,66 +978,39 @@ export const submitWellbeingQuestionnaire = async (
                 );
               }
 
-              const submission =
-                await tx.wellbeingSubmission.create({
-                  data: {
-                    userId,
-                    questionnaireId: questionnaire.id,
-                    questionnaireVersionId: version.id,
-                    submittedAt,
-                    nextEligibleAt,
+              return tx.wellbeingSubmission.create({
+                data: {
+                  userId,
+                  questionnaireId: questionnaire.id,
+                  questionnaireVersionId: version.id,
+                  submittedAt,
+                  nextEligibleAt,
 
-                    answers: {
-                      create: validatedAnswers.map((answer) => ({
-                        questionId: answer.questionId,
-                        numericValue: answer.numericValue,
-                        textValue: answer.textValue,
+                  answers: {
+                    create: validatedAnswers.map((answer) => ({
+                      questionId: answer.questionId,
+                      numericValue: answer.numericValue,
+                      textValue: answer.textValue,
 
-                        selectedOptions:
-                          answer.selectedOptionIds.length > 0
-                            ? {
-                                create: answer.selectedOptionIds.map((optionId) => ({
-                                  optionId,
-                                })),
-                              }
-                            : undefined,
-                      })),
-                    },
+                      selectedOptions:
+                        answer.selectedOptionIds.length > 0
+                          ? {
+                              create: answer.selectedOptionIds.map((optionId) => ({
+                                optionId,
+                              })),
+                            }
+                          : undefined,
+                    })),
                   },
+                },
 
-                  select: {
-                    id: true,
-                    submittedAt: true,
-                    nextEligibleAt: true,
-                    questionnaireVersionId: true,
-                  },
-                });
-
-              // Charge exactly once, in the SAME transaction
-              // as the successful questionnaire submission.
-              const updatedWallet =
-                await debitTokensInTransaction(
-                  tx,
-                  {
-                    userId,
-                    amount:
-                      WELLBEING_TOKEN_COST,
-                    featureKey:
-                      "WELLBEING_QUESTIONNAIRE",
-                    referenceId:
-                      submission.id,
-                    reason:
-                      `Wellbeing questionnaire submission: ${questionnaire.slug}`,
-                  }
-                );
-
-              return {
-                submission,
-                walletBalance:
-                  tokenNumber(
-                    updatedWallet.balance
-                  ),
-              };
+                select: {
+                  id: true,
+                  submittedAt: true,
+                  nextEligibleAt: true,
+                  questionnaireVersionId: true,
+                },
+              });
             },
             {
               isolationLevel:
@@ -897,16 +1040,11 @@ export const submitWellbeingQuestionnaire = async (
       }
     }
 
-    if (!transactionResult) {
+    if (!submission) {
       throw new Error(
         "Unable to save wellbeing questionnaire transaction."
       );
     }
-
-    const {
-      submission,
-      walletBalance,
-    } = transactionResult;
 
     return res.status(201).json({
       status: "success",
@@ -928,40 +1066,12 @@ export const submitWellbeingQuestionnaire = async (
           daysRemaining: questionnaire.refillIntervalDays,
         },
 
-        payment: {
-          tokenCost:
-            WELLBEING_TOKEN_COST,
-          tokensSpent:
-            WELLBEING_TOKEN_COST,
-          walletBalance,
-        },
 
         supportPromptRecommended,
       },
     });
   } catch (error) {
     console.error("Submit wellbeing questionnaire error:", error);
-
-    if (
-      error instanceof
-      TokenServiceError
-    ) {
-      return res
-        .status(
-          error.statusCode
-        )
-        .json({
-          status: "error",
-          code: error.code,
-          message:
-            error.code === "INSUFFICIENT_TOKENS"
-              ? `You need ${WELLBEING_TOKEN_COST} token to submit this wellbeing questionnaire.`
-              : error.message,
-          ...(error.details || {}),
-          requiredTokens:
-            WELLBEING_TOKEN_COST,
-        });
-    }
 
     if (
       error instanceof

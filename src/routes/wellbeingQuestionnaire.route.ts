@@ -11,6 +11,7 @@ import {
   getWellbeingQuestionnaireBySlug,
   submitWellbeingQuestionnaire,
   getWellbeingQuestionnaireHistory,
+  unlockWellbeingAccess,
 } from "../controllers/wellbeingQuestionnaire.controller";
 
 
@@ -18,10 +19,18 @@ const router =
   Router();
 
 
-// Authentication is required, but a 30-day site pass is not.
-// Submission itself costs WELLBEING_TOKEN_COST (default: 1 token).
+// Authentication is required.
+// Entry costs WELLBEING_TOKEN_COST (default: 1 token) unless
+// the user already has active Anandam site access.
+// Questionnaire submission itself does not charge again.
 router.use(
   authenticateToken
+);
+
+
+router.post(
+  "/access",
+  unlockWellbeingAccess
 );
 
 

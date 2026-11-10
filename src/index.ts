@@ -238,11 +238,12 @@ app.use(
 // ======================================================
 // WELLBEING QUESTIONNAIRES
 //
-// PAY-PER-SUBMISSION FEATURE
+// PAY-PER-ENTRY FEATURE
 //
-// No site-access pass is required to load the questionnaire.
-// A successful submission deducts WELLBEING_TOKEN_COST
-// (1 token by default) inside the same DB transaction.
+// Frontend requests POST /api/wellbeing-questionnaires/access
+// when entering the Wellbeing area. Without active site access,
+// that endpoint deducts WELLBEING_TOKEN_COST (default 1 token).
+// Questionnaire submission itself does not charge again.
 // ======================================================
 
 app.use(
@@ -254,15 +255,17 @@ app.use(
 // ======================================================
 // PSYCHOMETRIC TESTS
 //
-// Requires active Anandam site access.
-// Existing psychometric attempt/token charges still remain
-// separate and continue to work inside the psychometric flow.
+// These live inside the Wellbeing area. The frontend Wellbeing
+// entry gate handles the 1-token entry charge when there is no
+// active site pass. Existing psychometric attempt/token charges
+// remain separate and continue to work inside the test flow.
+//
+// Do NOT apply requireSiteAccess here, otherwise a user who paid
+// the 1-token Wellbeing entry charge would still be blocked.
 // ======================================================
 
 app.use(
   "/api/psychometrics",
-  authenticateToken,
-  requireSiteAccess,
   psychometricRoutes
 );
 

@@ -32,6 +32,15 @@ export const authenticateToken = async (
   next: NextFunction
 ): Promise<any> => {
   try {
+
+        // Already authenticated by a parent router.
+    // Prevent duplicate session validation.
+    if (
+      req.user?.userId &&
+      req.user?.sessionId
+    ) {
+      return next();
+    }
     const authHeader = req.headers.authorization;
 
 

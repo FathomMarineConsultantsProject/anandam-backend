@@ -135,6 +135,7 @@ model User {
 
   tokenWallet       TokenWallet?
   tokenTransactions TokenTransaction[]
+  siteAccessPass    SiteAccessPass?
 
   // Contact details
   contactNumber String?
@@ -1488,6 +1489,27 @@ model TokenTransaction {
   @@index([userId, createdAt])
   @@index([featureKey])
   @@index([referenceId])
+}
+
+// ======================================================
+// 30-DAY ANANDAM SITE ACCESS
+// ======================================================
+
+model SiteAccessPass {
+  id String @id @default(uuid())
+
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  tokensSpent Int
+
+  startsAt DateTime
+  endsAt   DateTime
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([endsAt])
 }
 
 model PsychometricTest {

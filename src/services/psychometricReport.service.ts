@@ -1201,7 +1201,7 @@ function writeCover(
         "Helvetica-Bold"
       )
       .fontSize(
-        12
+        10
       )
       .fillColor(
         COLORS.heading
@@ -1213,14 +1213,17 @@ function writeCover(
         x +
           5,
         boxY +
-          37,
+          38,
         {
           width:
             columnWidth -
             10,
 
           align:
-            "center",
+        "center",
+
+      lineBreak:
+        false,
         }
       );
   }

@@ -124,7 +124,7 @@ function getReportCopy(
         "Personality Insights",
 
       assessmentName:
-        "Big Five Personality",
+        "Psychometric Personality Test",
 
       subtitle:
         "Explore your traits and understand yourself better through the Big Five personality model.",
@@ -469,6 +469,11 @@ function getDimensionPercentageByKey(
   );
 }
 
+const REPORT_TIME_ZONE =
+  process.env.REPORT_TIME_ZONE ||
+  "Asia/Kolkata";
+
+
 function formatDateTime(
   value:
     | string
@@ -496,25 +501,46 @@ function formatDateTime(
   }
 
 
-  return date.toLocaleString(
-    "en-GB",
-    {
-      day:
-        "2-digit",
+  const datePart =
+    date.toLocaleDateString(
+      "en-GB",
+      {
+        day:
+          "2-digit",
 
-      month:
-        "long",
+        month:
+          "long",
 
-      year:
-        "numeric",
+        year:
+          "numeric",
 
-      hour:
-        "2-digit",
+        timeZone:
+          REPORT_TIME_ZONE,
+      }
+    );
 
-      minute:
-        "2-digit",
-    }
-  );
+
+  const timePart =
+    date.toLocaleTimeString(
+      "en-US",
+      {
+        hour:
+          "2-digit",
+
+        minute:
+          "2-digit",
+
+        hour12:
+          true,
+
+        timeZone:
+          REPORT_TIME_ZONE,
+      }
+    )
+      .toUpperCase();
+
+
+  return `${datePart} at ${timePart}`;
 }
 
 

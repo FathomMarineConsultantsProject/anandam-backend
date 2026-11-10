@@ -1,4 +1,6 @@
-import { Router } from "express";
+import {
+  Router,
+} from "express";
 
 import {
   createMoodLog,
@@ -10,7 +12,10 @@ import {
   authenticateToken,
 } from "../middleware/auth.middleware";
 
-const router = Router();
+
+const router =
+  Router();
+
 
 router.post(
   "/log",
@@ -18,16 +23,19 @@ router.post(
   createMoodLog
 );
 
+
 router.get(
   "/history",
   authenticateToken,
   getMyMoodHistory
 );
 
+
 router.get(
   "/:id",
   authenticateToken,
   getMoodLogById
 );
+
 
 export default router;

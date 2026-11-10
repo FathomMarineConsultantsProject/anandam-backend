@@ -3,8 +3,29 @@ import "dotenv/config";
 import express from "express";
 import cors from "cors";
 
+
+// ======================================================
+// AUTH / ACCESS
+// ======================================================
+
 import authRoutes
   from "./routes/auth.route";
+
+import siteAccessRoutes
+  from "./routes/siteAccess.route";
+
+import {
+  authenticateToken,
+} from "./middleware/auth.middleware";
+
+import {
+  requireSiteAccess,
+} from "./middleware/siteAccess.middleware";
+
+
+// ======================================================
+// CORE APP ROUTES
+// ======================================================
 
 import moodRoutes
   from "./routes/mood.route";
@@ -45,12 +66,13 @@ import tokenRoutes
 import psychometricRoutes
   from "./routes/psychometric.route";
 
-import {
-  PsychometricError,
-} from "./services/psychometric.service";
+import journalRoutes
+  from "./routes/journal.route";
 
 
-// Marketplace
+// ======================================================
+// MARKETPLACE
+// ======================================================
 
 import marketplaceRoutes
   from "./routes/marketplace.route";
@@ -68,6 +90,9 @@ import practitionerOnboardingRoutes
   from "./routes/practitionerOnboarding.route";
 
 
+// ======================================================
+// NOTIFICATIONS / VIDEO
+// ======================================================
 
 import notificationRoutes
   from "./routes/notification.route";
@@ -75,12 +100,23 @@ import notificationRoutes
 import videoCallRoutes
   from "./routes/videoCall.route";
 
-import journalRoutes
-  from "./routes/journal.route";
 
+// ======================================================
+// PSYCHOMETRIC ERROR
+// ======================================================
+
+import {
+  PsychometricError,
+} from "./services/psychometric.service";
+
+
+// ======================================================
+// APP
+// ======================================================
 
 const app =
   express();
+
 
 const PORT =
   process.env.PORT ||
@@ -90,6 +126,7 @@ const PORT =
 app.use(
   cors()
 );
+
 
 app.use(
   express.json()
@@ -102,23 +139,31 @@ app.use(
 
 app.get(
   "/",
-  (req, res) => {
-    res.status(200).json({
-      message:
-        "Welcome to the Anandam Seafarer App API!",
+  (
+    _req,
+    res
+  ) => {
+    res
+      .status(200)
+      .json({
+        message:
+          "Welcome to the Anandam Seafarer App API!",
 
-      status:
-        "Active",
+        status:
+          "Active",
 
-      time:
-        new Date().toISOString(),
-    });
+        time:
+          new Date()
+            .toISOString(),
+      });
   }
 );
 
 
 // ======================================================
-// EXISTING APP ROUTES
+// AUTH
+//
+// FREE
 // ======================================================
 
 app.use(
@@ -126,72 +171,94 @@ app.use(
   authRoutes
 );
 
+
+// ======================================================
+// SITE ACCESS
+//
+// FREE TO CHECK / ACTIVATE
+// ======================================================
+
 app.use(
-  "/api/mood",
-  moodRoutes
+  "/api/site-access",
+  siteAccessRoutes
 );
+
+
+// ======================================================
+// PROFILE
+//
+// FREE ACCOUNT CONTROL
+// ======================================================
 
 app.use(
   "/api/profile",
   profileRoutes
 );
 
-app.use(
-  "/api/daily-plan",
-  dailyPlanRoutes
-);
+
+// ======================================================
+// TOKENS
+//
+// FREE ACCOUNT / PAYMENT CONTROL
+// ======================================================
 
 app.use(
-  "/api/habits",
-  habitRouter
+  "/api/tokens",
+  tokenRoutes
 );
 
-app.use(
-  "/api/work-hours",
-  workHoursRouter
-);
+
+// ======================================================
+// NOTIFICATIONS
+//
+// FREE HEADER / ACCOUNT CONTROL
+// ======================================================
 
 app.use(
-  "/api/google-calendar",
-  googleCalendarRoutes
+  "/api/notifications",
+  notificationRoutes
 );
 
-app.use(
-  "/api/fitness",
-  fitnessRoutes
-);
 
-app.use(
-  "/api/breathing",
-  breathingRoutes
-);
+// ======================================================
+// BLOGS
+//
+// FREE
+//
+// Keep existing public/private blog logic.
+// DO NOT place requireSiteAccess here.
+// ======================================================
 
 app.use(
   "/api/blogs",
   blogRoutes
 );
 
-app.use(
-  "/api/sleep-audio",
-  sleepAudioRoutes
-);
+
+// ======================================================
+// WELLBEING QUESTIONNAIRES
+//
+// FREE
+//
+// Existing questionnaire eligibility rules still apply.
+// ======================================================
 
 app.use(
   "/api/wellbeing-questionnaires",
   wellbeingQuestionnaireRoutes
 );
 
-// ======================================================
-// JOURNAL
-// ======================================================
-
-app.use(
-  "/api/journal",
-  journalRoutes
-);
 
 // ======================================================
-// PSYCHOMETRIC ASSESSMENTS
+// PSYCHOMETRIC TESTS
+//
+// IMPORTANT:
+//
+// DO NOT apply SiteAccess here.
+//
+// Psychometrics already have their own token/free-attempt
+// payment rules.
+// Applying SiteAccess here would cause double charging.
 // ======================================================
 
 app.use(
@@ -201,77 +268,191 @@ app.use(
 
 
 // ======================================================
-// MARKETPLACE
+// PREMIUM / SITE-ACCESS FEATURES
 // ======================================================
+
+
+// ------------------------------------------------------
+// MOOD
+// ------------------------------------------------------
+
+app.use(
+  "/api/mood",
+  authenticateToken,
+  requireSiteAccess,
+  moodRoutes
+);
+
+
+// ------------------------------------------------------
+// DAY PLANNER
+// ------------------------------------------------------
+
+app.use(
+  "/api/daily-plan",
+  authenticateToken,
+  requireSiteAccess,
+  dailyPlanRoutes
+);
+
+
+// ------------------------------------------------------
+// HABITS
+// ------------------------------------------------------
+
+app.use(
+  "/api/habits",
+  authenticateToken,
+  requireSiteAccess,
+  habitRouter
+);
+
+
+// ------------------------------------------------------
+// WORK / REST
+// ------------------------------------------------------
+
+app.use(
+  "/api/work-hours",
+  authenticateToken,
+  requireSiteAccess,
+  workHoursRouter
+);
+
+
+// ------------------------------------------------------
+// GOOGLE CALENDAR
+// ------------------------------------------------------
+
+app.use(
+  "/api/google-calendar",
+  authenticateToken,
+  requireSiteAccess,
+  googleCalendarRoutes
+);
+
+
+// ------------------------------------------------------
+// FITNESS
+// ------------------------------------------------------
+
+app.use(
+  "/api/fitness",
+  authenticateToken,
+  requireSiteAccess,
+  fitnessRoutes
+);
+
+
+// ------------------------------------------------------
+// BREATHING
+// ------------------------------------------------------
+
+app.use(
+  "/api/breathing",
+  authenticateToken,
+  requireSiteAccess,
+  breathingRoutes
+);
+
+
+// ------------------------------------------------------
+// SLEEP
+// ------------------------------------------------------
+
+app.use(
+  "/api/sleep-audio",
+  authenticateToken,
+  requireSiteAccess,
+  sleepAudioRoutes
+);
+
+
+// ------------------------------------------------------
+// JOURNAL
+// ------------------------------------------------------
+
+app.use(
+  "/api/journal",
+  authenticateToken,
+  requireSiteAccess,
+  journalRoutes
+);
+
+
+// ------------------------------------------------------
+// MARKETPLACE
+// ------------------------------------------------------
 
 app.use(
   "/api/marketplace",
+  authenticateToken,
+  requireSiteAccess,
   marketplaceRoutes
 );
 
 
-// Normal user enquiry flow
+// ------------------------------------------------------
+// ENQUIRIES
+// ------------------------------------------------------
 
 app.use(
   "/api/enquiries",
+  authenticateToken,
+  requireSiteAccess,
   enquiryRoutes
 );
 
 
-// Normal user appointments
+// ------------------------------------------------------
+// APPOINTMENTS
+// ------------------------------------------------------
 
 app.use(
   "/api/appointments",
+  authenticateToken,
+  requireSiteAccess,
   appointmentRoutes
 );
 
 
-// Existing practitioner-only enquiry/session area
+// ------------------------------------------------------
+// PRACTITIONER AREA
+//
+// Practitioner accounts automatically bypass
+// the normal USER subscription restriction.
+// ------------------------------------------------------
 
 app.use(
   "/api/practitioner",
+  authenticateToken,
+  requireSiteAccess,
   practitionerRoutes
 );
 
 
-// Practitioner registration onboarding / editable profile
-
 app.use(
   "/api/practitioner-onboarding",
+  authenticateToken,
+  requireSiteAccess,
   practitionerOnboardingRoutes
 );
 
-// ======================================================
-// TOKENS
-// ======================================================
 
-app.use(
-  "/api/tokens",
-  tokenRoutes
-);
-
-// User + practitioner notification bell
-
-app.use(
-  "/api/notifications",
-  notificationRoutes
-);
-
-
-// ======================================================
+// ------------------------------------------------------
 // VIDEO CALLS
-// USER + PRACTITIONER
-// ======================================================
+// ------------------------------------------------------
 
 app.use(
   "/api/video",
+  authenticateToken,
+  requireSiteAccess,
   videoCallRoutes
 );
 
+
 // ======================================================
 // GLOBAL ERROR HANDLER
-// IMPORTANT: keep this AFTER all routes
-// and BEFORE app.listen()
 // ======================================================
 
 app.use(
@@ -289,7 +470,6 @@ app.use(
 
     // ==================================================
     // PSYCHOMETRIC ERRORS
-    // Preserve payment/token information for frontend.
     // ==================================================
 
     if (
@@ -308,8 +488,10 @@ app.use(
             error.code ||
             "PSYCHOMETRIC_ERROR",
 
-          ...(error.details ||
-            {}),
+          ...(
+            error.details ||
+            {}
+          ),
         });
     }
 
@@ -331,7 +513,8 @@ app.use(
 
 
     if (
-      statusCode === 400
+      statusCode ===
+      400
     ) {
       code =
         "BAD_REQUEST";
@@ -339,7 +522,8 @@ app.use(
 
 
     if (
-      statusCode === 401
+      statusCode ===
+      401
     ) {
       code =
         "UNAUTHORIZED";
@@ -347,7 +531,8 @@ app.use(
 
 
     if (
-      statusCode === 402
+      statusCode ===
+      402
     ) {
       code =
         "PAYMENT_REQUIRED";
@@ -355,7 +540,8 @@ app.use(
 
 
     if (
-      statusCode === 403
+      statusCode ===
+      403
     ) {
       code =
         "FORBIDDEN";
@@ -363,7 +549,8 @@ app.use(
 
 
     if (
-      statusCode === 404
+      statusCode ===
+      404
     ) {
       code =
         "NOT_FOUND";
@@ -371,7 +558,8 @@ app.use(
 
 
     if (
-      statusCode === 409
+      statusCode ===
+      409
     ) {
       code =
         "CONFLICT";
@@ -393,9 +581,8 @@ app.use(
 );
 
 
-
 // ======================================================
-// START LOCAL SERVER
+// LOCAL SERVER
 // ======================================================
 
 if (

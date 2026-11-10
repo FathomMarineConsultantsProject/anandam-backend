@@ -1,10 +1,14 @@
 import {
   Prisma,
   PrismaClient,
-  TokenTransactionSource,
-  TokenTransactionType,
   UserRole,
 } from "@prisma/client";
+
+import {
+  debitTokensInTransaction,
+  TokenServiceError,
+  tokenNumber,
+} from "./token.service";
 
 
 const prisma =
@@ -17,9 +21,14 @@ const MS_PER_DAY =
 
 // ======================================================
 // CONFIG
+//
+// Default rule:
+// 30 tokens = 30 days
+// 1 token   = 1 day
+// 0.5 token = 12 hours
 // ======================================================
 
-function positiveIntegerFromEnv(
+function positiveNumberFromEnv(
   value: string | undefined,
   fallback: number
 ) {
@@ -28,7 +37,7 @@ function positiveIntegerFromEnv(
 
 
   if (
-    !Number.isInteger(parsed) ||
+    !Number.isFinite(parsed) ||
     parsed <= 0
   ) {
     return fallback;
@@ -41,25 +50,100 @@ function positiveIntegerFromEnv(
 
 export function getSiteAccessConfig() {
   const tokenCost =
-    positiveIntegerFromEnv(
+    positiveNumberFromEnv(
       process.env
         .SITE_ACCESS_TOKEN_COST,
-      5
-    );
-
-
-  const durationDays =
-    positiveIntegerFromEnv(
-      process.env
-        .SITE_ACCESS_DURATION_DAYS,
       30
     );
 
 
+  const daysPerToken =
+    positiveNumberFromEnv(
+      process.env
+        .SITE_ACCESS_DAYS_PER_TOKEN,
+      1
+    );
+
+
+  const durationDays =
+    tokenCost *
+    daysPerToken;
+
+
   return {
     tokenCost,
+    daysPerToken,
     durationDays,
   };
+}
+
+
+function normalizeRequestedTokenAmount(
+  value: unknown
+) {
+  const config =
+    getSiteAccessConfig();
+
+
+  const parsed =
+    value === undefined ||
+    value === null ||
+    value === ""
+      ? config.tokenCost
+      : Number(value);
+
+
+  if (
+    !Number.isFinite(parsed) ||
+    parsed <= 0
+  ) {
+    throw new SiteAccessError(
+      "Token amount must be greater than zero.",
+      {
+        statusCode: 400,
+        code:
+          "INVALID_SITE_ACCESS_TOKEN_AMOUNT",
+      }
+    );
+  }
+
+
+  const decimalText =
+    String(value ?? parsed);
+
+
+  const decimals =
+    decimalText.includes(".")
+      ? decimalText
+          .split(".")[1]
+          ?.length ?? 0
+      : 0;
+
+
+  if (
+    decimals > 6
+  ) {
+    throw new SiteAccessError(
+      "Site-access token amount can have a maximum of 6 decimal places.",
+      {
+        statusCode: 400,
+        code:
+          "INVALID_SITE_ACCESS_TOKEN_PRECISION",
+      }
+    );
+  }
+
+
+  return parsed;
+}
+
+
+function cleanNumber(
+  value: number
+) {
+  return Number(
+    value.toFixed(6)
+  );
 }
 
 
@@ -81,22 +165,16 @@ export class SiteAccessError extends Error {
       details?: Record<string, unknown>;
     }
   ) {
-    super(
-      message
-    );
-
+    super(message);
 
     this.name =
       "SiteAccessError";
 
-
     this.statusCode =
       options.statusCode;
 
-
     this.code =
       options.code;
-
 
     this.details =
       options.details;
@@ -147,8 +225,8 @@ export async function hasActiveSiteAccess(
   }
 
 
-  // Practitioner and admin accounts
-  // are not restricted by USER subscription.
+  // Practitioner and admin accounts are not restricted
+  // by the normal USER subscription.
   if (
     user.role !==
     UserRole.USER
@@ -206,7 +284,8 @@ export async function getSiteAccessStatus(
 
         create: {
           userId,
-          balance: 0,
+          balance:
+            new Prisma.Decimal(0),
         },
       }),
 
@@ -222,9 +301,7 @@ export async function getSiteAccessStatus(
     throw new SiteAccessError(
       "User account was not found.",
       {
-        statusCode:
-          404,
-
+        statusCode: 404,
         code:
           "USER_NOT_FOUND",
       }
@@ -250,26 +327,40 @@ export async function getSiteAccessStatus(
     passActive;
 
 
-  let daysRemaining =
-    0;
-
-
-  if (
-    passActive &&
-    pass
-  ) {
-    daysRemaining =
-      Math.max(
-        1,
-        Math.ceil(
-          (
-            pass.endsAt.getTime() -
+  const remainingMs =
+    passActive && pass
+      ? Math.max(
+          0,
+          pass.endsAt.getTime() -
             now.getTime()
-          ) /
+        )
+      : 0;
+
+
+  const daysRemaining =
+    remainingMs > 0
+      ? Math.ceil(
+          remainingMs /
           MS_PER_DAY
         )
-      );
-  }
+      : 0;
+
+
+  const hoursRemaining =
+    remainingMs > 0
+      ? Number(
+          (
+            remainingMs /
+            (60 * 60 * 1000)
+          ).toFixed(2)
+        )
+      : 0;
+
+
+  const tokenBalance =
+    tokenNumber(
+      wallet.balance
+    );
 
 
   return {
@@ -283,18 +374,17 @@ export async function getSiteAccessStatus(
           : "NONE",
 
     startsAt:
-      passActive &&
-      pass
+      passActive && pass
         ? pass.startsAt
         : null,
 
     endsAt:
-      passActive &&
-      pass
+      passActive && pass
         ? pass.endsAt
         : null,
 
     daysRemaining,
+    hoursRemaining,
 
     tokenCost:
       config.tokenCost,
@@ -302,37 +392,45 @@ export async function getSiteAccessStatus(
     durationDays:
       config.durationDays,
 
-    tokenBalance:
-      wallet.balance,
+    daysPerToken:
+      config.daysPerToken,
+
+    tokenBalance,
 
     canActivate:
-      !active &&
-      wallet.balance >=
-        config.tokenCost,
+      tokenBalance >=
+      config.tokenCost,
+
+    canExtend:
+      active &&
+      tokenBalance > 0,
 
     missingTokens:
       active
         ? 0
-        : Math.max(
-            0,
-            config.tokenCost -
-              wallet.balance
+        : cleanNumber(
+            Math.max(
+              0,
+              config.tokenCost -
+                tokenBalance
+            )
           ),
 
-    // These are intentionally accessible
-    // without the 30-day site subscription.
     freeAccess: {
       dashboard:
+        true,
+
+      quickMood:
         true,
 
       blogs:
         true,
 
       wellbeingQuestionnaires:
-        true,
+        false,
 
       psychometrics:
-        true,
+        false,
 
       profile:
         true,
@@ -348,27 +446,53 @@ export async function getSiteAccessStatus(
 
 
 // ======================================================
-// ACTIVATE SITE ACCESS
+// ACTIVATE / EXTEND SITE ACCESS
 //
-// 5 tokens -> 30 days by default.
+// Default request:
+//   POST /api/site-access/activate
+//   -> 30 tokens -> 30 days
 //
-// Deduction + transaction history + access pass
-// happen atomically.
+// Optional fractional request:
+//   { "tokenAmount": 0.5 }
+//   -> 0.5 token -> 12 hours
+//
+// If a pass is already active, the purchased duration is
+// added to the CURRENT expiry instead of replacing it.
 // ======================================================
 
 export async function activateSiteAccess(
-  userId: string
+  userId: string,
+  requestedTokenAmount?: unknown
 ) {
   const config =
     getSiteAccessConfig();
 
 
+  const tokenAmount =
+    normalizeRequestedTokenAmount(
+      requestedTokenAmount
+    );
+
+
+  const durationDays =
+    tokenAmount *
+    config.daysPerToken;
+
+
+  const durationMs =
+    Math.max(
+      1,
+      Math.round(
+        durationDays *
+        MS_PER_DAY
+      )
+    );
+
+
   const runTransaction =
     async () => {
       return prisma.$transaction(
-        async (
-          tx
-        ) => {
+        async (tx) => {
           const user =
             await tx.user.findUnique({
               where: {
@@ -385,9 +509,7 @@ export async function activateSiteAccess(
             throw new SiteAccessError(
               "User account was not found.",
               {
-                statusCode:
-                  404,
-
+                statusCode: 404,
                 code:
                   "USER_NOT_FOUND",
               }
@@ -395,8 +517,6 @@ export async function activateSiteAccess(
           }
 
 
-          // Practitioner / admin accounts
-          // never need to buy USER access.
           if (
             user.role !==
             UserRole.USER
@@ -410,169 +530,98 @@ export async function activateSiteAccess(
 
 
           const existingPass =
-            await tx
-              .siteAccessPass
-              .findUnique({
-                where: {
-                  userId,
-                },
-              });
+            await tx.siteAccessPass.findUnique({
+              where: {
+                userId,
+              },
+            });
 
 
-          // Already active:
-          // do NOT charge again.
-          if (
-            existingPass &&
-            existingPass
-              .endsAt
-              .getTime() >
-              now.getTime()
-          ) {
-            return;
-          }
-
-
-          const wallet =
-            await tx
-              .tokenWallet
-              .upsert({
-                where: {
-                  userId,
-                },
-
-                update: {},
-
-                create: {
-                  userId,
-                  balance: 0,
-                },
-              });
-
-
-          if (
-            wallet.balance <
-            config.tokenCost
-          ) {
-            throw new SiteAccessError(
-              `You need ${config.tokenCost} tokens to activate ${config.durationDays} days of Anandam access.`,
-              {
-                statusCode:
-                  402,
-
-                code:
-                  "INSUFFICIENT_TOKENS",
-
-                details: {
-                  requiredTokens:
-                    config.tokenCost,
-
-                  currentBalance:
-                    wallet.balance,
-
-                  missingTokens:
-                    config.tokenCost -
-                    wallet.balance,
-
-                  durationDays:
-                    config.durationDays,
-                },
-              }
+          const existingActive =
+            Boolean(
+              existingPass &&
+              existingPass.endsAt.getTime() >
+                now.getTime()
             );
-          }
 
 
           const startsAt =
-            now;
+            existingActive &&
+            existingPass
+              ? existingPass.startsAt
+              : now;
+
+
+          const extensionBase =
+            existingActive &&
+            existingPass
+              ? existingPass.endsAt
+              : now;
 
 
           const endsAt =
             new Date(
-              startsAt.getTime() +
-              (
-                config.durationDays *
-                MS_PER_DAY
-              )
+              extensionBase.getTime() +
+              durationMs
             );
 
 
-          const updatedWallet =
-            await tx
-              .tokenWallet
-              .update({
-                where: {
-                  userId,
-                },
-
-                data: {
-                  balance: {
-                    decrement:
-                      config.tokenCost,
-                  },
-                },
-              });
+          const tokenAmountDecimal =
+            new Prisma.Decimal(
+              String(tokenAmount)
+            );
 
 
           const pass =
-            await tx
-              .siteAccessPass
-              .upsert({
-                where: {
-                  userId,
-                },
+            await tx.siteAccessPass.upsert({
+              where: {
+                userId,
+              },
 
-                update: {
-                  tokensSpent:
-                    config.tokenCost,
+              update: {
+                tokensSpent:
+                  existingActive
+                    ? {
+                        increment:
+                          tokenAmountDecimal,
+                      }
+                    : tokenAmountDecimal,
 
-                  startsAt,
-                  endsAt,
-                },
+                startsAt,
+                endsAt,
+              },
 
-                create: {
-                  userId,
-
-                  tokensSpent:
-                    config.tokenCost,
-
-                  startsAt,
-                  endsAt,
-                },
-              });
-
-
-          await tx
-            .tokenTransaction
-            .create({
-              data: {
+              create: {
                 userId,
 
-                type:
-                  TokenTransactionType.DEBIT,
+                tokensSpent:
+                  tokenAmountDecimal,
 
-                source:
-                  TokenTransactionSource.FEATURE,
-
-                amount:
-                  config.tokenCost,
-
-                balanceBefore:
-                  wallet.balance,
-
-                balanceAfter:
-                  updatedWallet.balance,
-
-                featureKey:
-                  "SITE_ACCESS_PASS",
-
-                referenceId:
-                  pass.id,
-
-                reason:
-                  `Activated Anandam access for ${config.durationDays} days.`,
+                startsAt,
+                endsAt,
               },
             });
-        },
 
+
+          await debitTokensInTransaction(
+            tx,
+            {
+              userId,
+
+              amount:
+                tokenAmountDecimal,
+
+              featureKey:
+                "SITE_ACCESS_PASS",
+
+              referenceId:
+                pass.id,
+
+              reason:
+                `Activated/extended Anandam access by ${cleanNumber(durationDays)} day(s).`,
+            }
+          );
+        },
         {
           isolationLevel:
             Prisma
@@ -583,8 +632,6 @@ export async function activateSiteAccess(
     };
 
 
-  // Protect against double-click /
-  // simultaneous activation requests.
   for (
     let attempt = 0;
     attempt < 3;
@@ -594,17 +641,59 @@ export async function activateSiteAccess(
       await runTransaction();
 
 
-      return getSiteAccessStatus(
-        userId
-      );
-    } catch (
-      error
-    ) {
+      return {
+        ...(
+          await getSiteAccessStatus(
+            userId
+          )
+        ),
+
+        activation: {
+          tokensUsed:
+            cleanNumber(
+              tokenAmount
+            ),
+
+          durationDays:
+            cleanNumber(
+              durationDays
+            ),
+
+          durationHours:
+            Number(
+              (
+                durationDays *
+                24
+              ).toFixed(2)
+            ),
+        },
+      };
+    } catch (error) {
       if (
         error instanceof
         SiteAccessError
       ) {
         throw error;
+      }
+
+
+      if (
+        error instanceof
+        TokenServiceError
+      ) {
+        throw new SiteAccessError(
+          error.message,
+          {
+            statusCode:
+              error.statusCode,
+
+            code:
+              error.code,
+
+            details:
+              error.details,
+          }
+        );
       }
 
 
@@ -632,9 +721,7 @@ export async function activateSiteAccess(
   throw new SiteAccessError(
     "Unable to activate site access.",
     {
-      statusCode:
-        500,
-
+      statusCode: 500,
       code:
         "SITE_ACCESS_ACTIVATION_FAILED",
     }

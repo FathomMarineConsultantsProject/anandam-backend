@@ -1,6 +1,7 @@
 import "dotenv/config";
 
 import {
+  Prisma,
   PrismaClient,
   TokenTransactionSource,
   TokenTransactionType,
@@ -38,20 +39,38 @@ async function main() {
   }
 
 
-  const amount =
-    Number(
-      rawAmount
+  let amount:
+    Prisma.Decimal;
+
+
+  try {
+    amount =
+      new Prisma.Decimal(
+        rawAmount
+      );
+  } catch {
+    throw new Error(
+      "Amount must be a valid number."
     );
+  }
 
 
   if (
-    !Number.isInteger(
-      amount
-    ) ||
-    amount === 0
+    !amount.isFinite() ||
+    amount.isZero()
   ) {
     throw new Error(
-      "Amount must be a non-zero integer."
+      "Amount must be a non-zero number."
+    );
+  }
+
+
+  if (
+    amount.decimalPlaces() >
+    6
+  ) {
+    throw new Error(
+      "Amount can have a maximum of 6 decimal places."
     );
   }
 
@@ -96,7 +115,7 @@ async function main() {
         user.id,
 
       balance:
-        0,
+        new Prisma.Decimal(0),
     },
   });
 
@@ -114,16 +133,16 @@ async function main() {
 
 
         const nextBalance =
-          current.balance +
-          amount;
+          current.balance.plus(
+            amount
+          );
 
 
         if (
-          nextBalance <
-          0
+          nextBalance.lt(0)
         ) {
           throw new Error(
-            `Cannot reduce balance below zero. Current balance: ${current.balance}`
+            `Cannot reduce balance below zero. Current balance: ${current.balance.toString()}`
           );
         }
 
@@ -148,7 +167,7 @@ async function main() {
               user.id,
 
             type:
-              amount > 0
+              amount.gt(0)
                 ? TokenTransactionType.CREDIT
                 : TokenTransactionType.ADJUSTMENT,
 
@@ -156,9 +175,7 @@ async function main() {
               TokenTransactionSource.ADMIN,
 
             amount:
-              Math.abs(
-                amount
-              ),
+              amount.abs(),
 
             balanceBefore:
               current.balance,
@@ -172,6 +189,12 @@ async function main() {
 
 
         return wallet;
+      },
+      {
+        isolationLevel:
+          Prisma
+            .TransactionIsolationLevel
+            .Serializable,
       }
     );
 
@@ -185,7 +208,9 @@ async function main() {
       user.email,
 
     balance:
-      result.balance,
+      Number(
+        result.balance.toString()
+      ),
   });
 }
 

@@ -12,6 +12,7 @@ import {
   hasActiveSiteAccess,
 } from "../services/siteAccess.service";
 
+
 // ======================================================
 // COMMON SITE ACCESS ERROR
 // ======================================================
@@ -133,15 +134,6 @@ export async function requireSiteAccess(
 
 // ======================================================
 // DETECT QUICK MOOD REQUEST
-//
-// QUICK:
-//
-// {
-//   "checkinType": "QUICK",
-//   "moodScore": 1-5
-// }
-//
-// FULL mood submissions must NOT pass this check.
 // ======================================================
 
 function isQuickMoodRequest(
@@ -161,10 +153,6 @@ function isQuickMoodRequest(
       : null;
 
 
-  // ----------------------------------------------------
-// Preferred explicit QUICK value
-// ----------------------------------------------------
-
   if (
     explicitType ===
     "QUICK"
@@ -172,10 +160,6 @@ function isQuickMoodRequest(
     return true;
   }
 
-
-  // ----------------------------------------------------
-// Anything explicitly marked differently is NOT quick
-// ----------------------------------------------------
 
   if (
     explicitType &&
@@ -186,13 +170,8 @@ function isQuickMoodRequest(
   }
 
 
-  // ----------------------------------------------------
-// Backwards-compatible inference
-//
-// Only moodScore = quick.
-// Any detailed wellbeing fields = full mood check.
-// ----------------------------------------------------
-
+  // Backwards compatibility:
+  // moodScore only = QUICK.
   return (
     body.moodScore !==
       undefined &&
@@ -224,9 +203,8 @@ function isQuickMoodRequest(
 // ======================================================
 // QUICK MOOD SUBMISSION OR SITE ACCESS
 //
-// QUICK mood is ALWAYS allowed for an authenticated user.
-//
-// FULL mood submission requires active 30-day access.
+// QUICK is always free for an authenticated user.
+// FULL mood requires active site access.
 // ======================================================
 
 export async function allowQuickMoodCheckinOrSiteAccess(
@@ -255,10 +233,6 @@ export async function allowQuickMoodCheckinOrSiteAccess(
     }
 
 
-    // --------------------------------------------------
-    // QUICK mood is free
-    // --------------------------------------------------
-
     if (
       isQuickMoodRequest(
         req
@@ -268,17 +242,11 @@ export async function allowQuickMoodCheckinOrSiteAccess(
     }
 
 
-    // --------------------------------------------------
-    // FULL mood requires site access
-    // --------------------------------------------------
-
-    const active =
+    if (
       await hasActiveSiteAccess(
         userId
-      );
-
-
-    if (active) {
+      )
+    ) {
       return next();
     }
 
@@ -313,13 +281,8 @@ export async function allowQuickMoodCheckinOrSiteAccess(
 // ======================================================
 // QUICK MOOD HISTORY OR SITE ACCESS
 //
-// Allows:
-//
-// GET /api/mood/history?type=QUICK
-//
-// This is useful for the post-login Quick Mood page.
-//
-// FULL history remains protected.
+// GET /api/mood/history?type=QUICK is free.
+// Any other mood history requires active site access.
 // ======================================================
 
 export async function allowQuickMoodHistoryOrSiteAccess(
@@ -364,10 +327,6 @@ export async function allowQuickMoodHistoryOrSiteAccess(
           );
 
 
-    // --------------------------------------------------
-    // QUICK history is free
-    // --------------------------------------------------
-
     if (
       type
         .trim()
@@ -378,17 +337,11 @@ export async function allowQuickMoodHistoryOrSiteAccess(
     }
 
 
-    // --------------------------------------------------
-    // All other mood history requires access
-    // --------------------------------------------------
-
-    const active =
+    if (
       await hasActiveSiteAccess(
         userId
-      );
-
-
-    if (active) {
+      )
+    ) {
       return next();
     }
 
@@ -415,73 +368,6 @@ export async function allowQuickMoodHistoryOrSiteAccess(
 
         message:
           "Unable to verify mood history access.",
-      });
-  }
-}
-
-
-// ======================================================
-// WELLBEING QUESTIONNAIRES
-//
-// Wellbeing is a FREE Anandam area.
-//
-// User must only be authenticated.
-// Site-access subscription is NOT required.
-//
-// We keep the same exported function name so existing
-// route files do not need to change.
-// ======================================================
-
-export async function allowFreeWellbeingQuestionnaireOrSiteAccess(
-  req: AuthRequest,
-  res: Response,
-  next: NextFunction
-): Promise<any> {
-  try {
-    const userId =
-      req.user?.userId;
-
-
-    if (!userId) {
-      return res
-        .status(401)
-        .json({
-          status:
-            "error",
-
-          code:
-            "UNAUTHORIZED",
-
-          message:
-            "Please sign in to continue.",
-        });
-    }
-
-
-    // --------------------------------------------------
-    // WELLBEING IS FREE
-    // --------------------------------------------------
-
-    return next();
-
-  } catch (error) {
-    console.error(
-      "Wellbeing access check error:",
-      error
-    );
-
-
-    return res
-      .status(500)
-      .json({
-        status:
-          "error",
-
-        code:
-          "WELLBEING_ACCESS_CHECK_FAILED",
-
-        message:
-          "Unable to verify wellbeing access.",
       });
   }
 }

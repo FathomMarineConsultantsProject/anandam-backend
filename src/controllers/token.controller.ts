@@ -9,6 +9,7 @@ import {
 
 import {
   ensureTokenWallet,
+  tokenNumber,
 } from "../services/token.service";
 
 
@@ -16,16 +17,25 @@ const prisma =
   new PrismaClient();
 
 
+const configuredTokenPrice =
+  Number(
+    process.env.TOKEN_PRICE_INR ??
+    100
+  );
+
+
 const TOKEN_PRICE_INR =
-  100;
+  Number.isFinite(
+    configuredTokenPrice
+  ) &&
+  configuredTokenPrice >= 0
+    ? configuredTokenPrice
+    : 100;
 
 
-// ======================================================
-// AUTH USER ID
-//
-// Supports the same authentication structure used
-// throughout the rest of Anandam.
-// ======================================================
+const DEFAULT_CONTACT_EMAIL =
+  "contact@fathommarineconsultants.com";
+
 
 type AuthenticatedRequest =
   Request & {
@@ -88,7 +98,9 @@ export async function getMyTokenSummary(
       .status(200)
       .json({
         balance:
-          wallet.balance,
+          tokenNumber(
+            wallet.balance
+          ),
 
         tokenPriceInr:
           TOKEN_PRICE_INR,
@@ -102,7 +114,7 @@ export async function getMyTokenSummary(
         contactEmail:
           process.env
             .ANANDAM_CONTACT_EMAIL ||
-          null,
+          DEFAULT_CONTACT_EMAIL,
       });
   } catch (error) {
     console.error(
@@ -169,7 +181,27 @@ export async function getMyTokenHistory(
     return res
       .status(200)
       .json({
-        transactions,
+        transactions:
+          transactions.map(
+            (transaction) => ({
+              ...transaction,
+
+              amount:
+                tokenNumber(
+                  transaction.amount
+                ),
+
+              balanceBefore:
+                tokenNumber(
+                  transaction.balanceBefore
+                ),
+
+              balanceAfter:
+                tokenNumber(
+                  transaction.balanceAfter
+                ),
+            })
+          ),
       });
   } catch (error) {
     console.error(

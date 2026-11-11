@@ -132,6 +132,7 @@ const workouts = [
     isActive: true,
     sortOrder: 7,
   },
+  
   {
     slug: "vr-headset-experience-gny20vhlxag",
     type: "VR",
@@ -164,6 +165,47 @@ const workouts = [
     isActive: true,
     sortOrder: 8,
   },
+
+  {
+  slug: "guided-workout-ml6ct4azdqi",
+  type: "GUIDED",
+  title: "Guided Workout 06",
+  category: "CARDIO",
+  difficulty: "ADVANCED",
+  durationMinutes: 20,
+
+  shortDescription:
+    "An advanced guided cardio workout designed to challenge endurance, stamina, and overall fitness.",
+
+  about:
+    "Follow this higher-intensity cardio session at a pace appropriate for your fitness level. Make sure you have enough clear space to exercise safely, take breaks when needed, and stop if you feel pain, dizziness, or unusual discomfort.",
+
+  thumbnailUrl:
+    "https://i.ytimg.com/vi/ml6cT4AZdqI/hqdefault.jpg",
+
+  youtubeVideoId: "ml6cT4AZdqI",
+
+  benefits: [
+    "Supports cardiovascular endurance",
+    "Helps improve stamina",
+    "Provides a higher-intensity workout",
+  ],
+
+  beforeYouBegin: [
+    "Make sure you have enough clear space to exercise safely.",
+    "Wear suitable exercise footwear and clothing.",
+    "Warm up before beginning the higher-intensity movements.",
+    "Reduce the intensity or stop if you feel pain, dizziness, or unusual discomfort.",
+  ],
+
+  requiredEquipment: [],
+
+  vrLaunchUrl: null,
+
+  isActive: true,
+
+  sortOrder: 9,
+},
 
 ];
 

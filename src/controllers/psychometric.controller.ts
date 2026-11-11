@@ -24,6 +24,10 @@ import {
   unlockPsychometricAnswers,
 } from "../services/psychometric.service";
 
+import {
+  sendCompletedPsychometricResultEmailSafely,
+} from "../services/psychometricResultEmail.service";
+
 
 type AuthenticatedRequest =
   Request & {
@@ -532,6 +536,16 @@ export async function submitPsychometricSectionController(
       );
 
 
+    if (
+      result.completed
+    ) {
+      await sendCompletedPsychometricResultEmailSafely(
+        userId,
+        attemptId
+      );
+    }
+
+
     return res
       .status(200)
       .json(
@@ -586,6 +600,16 @@ export async function submitPsychometricAttemptController(
         userId,
         attemptId
       );
+
+
+    if (
+      result.completed
+    ) {
+      await sendCompletedPsychometricResultEmailSafely(
+        userId,
+        attemptId
+      );
+    }
 
 
     return res

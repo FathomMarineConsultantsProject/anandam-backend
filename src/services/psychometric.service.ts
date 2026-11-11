@@ -17,7 +17,7 @@ const prisma =
 // ======================================================
 
 const PSYCHOMETRIC_DISCLAIMER_VERSION =
-  "1.0";
+  "1.1";
 
 const PSYCHOMETRIC_DISCLAIMER_WAIT_SECONDS =
   45;
@@ -34,6 +34,8 @@ This assessment does not constitute a medical, psychological, or psychiatric dia
 
 The results should not be used as the sole basis for employment, promotion, disciplinary, medical, or other high-stakes decisions.
 
+After you complete and submit this assessment, your completed assessment result report will be automatically shared with Fathom Marine Consultants for authorised review and support purposes.
+
 Fathom Marine Consultants and Anandüm by Fathom do not guarantee the accuracy, completeness, or suitability of the results for any particular purpose and, to the fullest extent permitted by law, accept no liability for decisions or actions taken solely on the basis of these results.
 `.trim();
 
@@ -41,6 +43,8 @@ const PSYCHOMETRIC_ACKNOWLEDGEMENT_TEXT = `
 I understand and acknowledge that this assessment is intended for indicative and informational purposes only, does not constitute a medical, psychological, or psychiatric diagnosis, and should not be relied upon as a substitute for professional evaluation.
 
 I confirm that I have read and understood the Assessment Disclaimer and Limitation of Liability.
+
+I understand and agree that, after I submit the assessment, my completed result report will be automatically sent to Fathom Marine Consultants for authorised review and support purposes.
 `.trim();
 
   
@@ -111,30 +115,71 @@ async function ensurePsychometricDisclaimerRecord(
     );
   }
 
-  return prisma.psychometricDisclaimerAcknowledgement.upsert({
-    where: {
-      attemptId,
-    },
+  const acknowledgement =
+    await prisma.psychometricDisclaimerAcknowledgement.upsert({
+      where: {
+        attemptId,
+      },
 
-    update: {},
+      update: {},
 
-    create: {
-      userId,
-      testId:
-        attempt.testId,
-      attemptId:
-        attempt.id,
+      create: {
+        userId,
+        testId:
+          attempt.testId,
+        attemptId:
+          attempt.id,
 
-      disclaimerVersion:
-        PSYCHOMETRIC_DISCLAIMER_VERSION,
+        disclaimerVersion:
+          PSYCHOMETRIC_DISCLAIMER_VERSION,
 
-      disclaimerTextSnapshot:
-        PSYCHOMETRIC_DISCLAIMER_TEXT,
+        disclaimerTextSnapshot:
+          PSYCHOMETRIC_DISCLAIMER_TEXT,
 
-      acknowledgementTextSnapshot:
-        PSYCHOMETRIC_ACKNOWLEDGEMENT_TEXT,
-    },
-  });
+        acknowledgementTextSnapshot:
+          PSYCHOMETRIC_ACKNOWLEDGEMENT_TEXT,
+      },
+    });
+
+
+  /*
+    If an existing attempt has NOT yet been acknowledged,
+    bring its disclosure up to the current version.
+
+    Never rewrite an already-accepted historical snapshot.
+  */
+
+  if (
+    !acknowledgement.accepted &&
+    acknowledgement.disclaimerVersion !==
+      PSYCHOMETRIC_DISCLAIMER_VERSION
+  ) {
+    return prisma.psychometricDisclaimerAcknowledgement.update({
+      where: {
+        attemptId,
+      },
+
+      data: {
+        disclaimerVersion:
+          PSYCHOMETRIC_DISCLAIMER_VERSION,
+
+        disclaimerTextSnapshot:
+          PSYCHOMETRIC_DISCLAIMER_TEXT,
+
+        acknowledgementTextSnapshot:
+          PSYCHOMETRIC_ACKNOWLEDGEMENT_TEXT,
+
+        presentedAt:
+          null,
+
+        canAcknowledgeAt:
+          null,
+      },
+    });
+  }
+
+
+  return acknowledgement;
 }
 
 

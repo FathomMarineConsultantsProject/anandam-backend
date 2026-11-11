@@ -87,8 +87,8 @@ function normalizeRequestedTokenAmount(
 
   const parsed =
     value === undefined ||
-    value === null ||
-    value === ""
+      value === null ||
+      value === ""
       ? config.tokenCost
       : Number(value);
 
@@ -115,8 +115,8 @@ function normalizeRequestedTokenAmount(
   const decimals =
     decimalText.includes(".")
       ? decimalText
-          .split(".")[1]
-          ?.length ?? 0
+        .split(".")[1]
+        ?.length ?? 0
       : 0;
 
 
@@ -225,11 +225,11 @@ export async function hasActiveSiteAccess(
   }
 
 
-  // Practitioner and admin accounts are not restricted
-  // by the normal USER subscription.
+  // Only SUPER_ADMIN bypasses the site-access system.
+  // USER and PRACTITIONER require an active pass.
   if (
-    user.role !==
-    UserRole.USER
+    user.role ===
+    UserRole.SUPER_ADMIN
   ) {
     return true;
   }
@@ -238,7 +238,7 @@ export async function hasActiveSiteAccess(
   return Boolean(
     pass &&
     pass.endsAt.getTime() >
-      now.getTime()
+    now.getTime()
   );
 }
 
@@ -310,15 +310,15 @@ export async function getSiteAccessStatus(
 
 
   const roleBypass =
-    user.role !==
-    UserRole.USER;
+    user.role ===
+    UserRole.SUPER_ADMIN;
 
 
   const passActive =
     Boolean(
       pass &&
       pass.endsAt.getTime() >
-        now.getTime()
+      now.getTime()
     );
 
 
@@ -330,30 +330,30 @@ export async function getSiteAccessStatus(
   const remainingMs =
     passActive && pass
       ? Math.max(
-          0,
-          pass.endsAt.getTime() -
-            now.getTime()
-        )
+        0,
+        pass.endsAt.getTime() -
+        now.getTime()
+      )
       : 0;
 
 
   const daysRemaining =
     remainingMs > 0
       ? Math.ceil(
-          remainingMs /
-          MS_PER_DAY
-        )
+        remainingMs /
+        MS_PER_DAY
+      )
       : 0;
 
 
   const hoursRemaining =
     remainingMs > 0
       ? Number(
-          (
-            remainingMs /
-            (60 * 60 * 1000)
-          ).toFixed(2)
-        )
+        (
+          remainingMs /
+          (60 * 60 * 1000)
+        ).toFixed(2)
+      )
       : 0;
 
 
@@ -409,12 +409,12 @@ export async function getSiteAccessStatus(
       active
         ? 0
         : cleanNumber(
-            Math.max(
-              0,
-              config.tokenCost -
-                tokenBalance
-            )
-          ),
+          Math.max(
+            0,
+            config.tokenCost -
+            tokenBalance
+          )
+        ),
 
     freeAccess: {
       dashboard:
@@ -518,8 +518,8 @@ export async function activateSiteAccess(
 
 
           if (
-            user.role !==
-            UserRole.USER
+            user.role ===
+            UserRole.SUPER_ADMIN
           ) {
             return;
           }
@@ -541,20 +541,20 @@ export async function activateSiteAccess(
             Boolean(
               existingPass &&
               existingPass.endsAt.getTime() >
-                now.getTime()
+              now.getTime()
             );
 
 
           const startsAt =
             existingActive &&
-            existingPass
+              existingPass
               ? existingPass.startsAt
               : now;
 
 
           const extensionBase =
             existingActive &&
-            existingPass
+              existingPass
               ? existingPass.endsAt
               : now;
 
@@ -582,9 +582,9 @@ export async function activateSiteAccess(
                 tokensSpent:
                   existingActive
                     ? {
-                        increment:
-                          tokenAmountDecimal,
-                      }
+                      increment:
+                        tokenAmountDecimal,
+                    }
                     : tokenAmountDecimal,
 
                 startsAt,
@@ -699,10 +699,10 @@ export async function activateSiteAccess(
 
       const retryable =
         error instanceof
-          Prisma
-            .PrismaClientKnownRequestError &&
+        Prisma
+          .PrismaClientKnownRequestError &&
         error.code ===
-          "P2034";
+        "P2034";
 
 
       if (

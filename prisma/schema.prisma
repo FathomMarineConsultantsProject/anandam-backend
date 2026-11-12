@@ -1556,7 +1556,7 @@ model PsychometricSection {
 
   durationMinutes Int
 
-  questionsPerAttempt Int @default(6)
+  questionsPerAttempt Int @default(20)
 
   sortOrder Int
 

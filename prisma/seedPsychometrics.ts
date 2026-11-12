@@ -452,7 +452,7 @@ async function seedMaritimeSections(
       durationMinutes:
         30,
       questionsPerAttempt:
-        6,
+        20,
       sortOrder:
         1,
     },
@@ -464,7 +464,7 @@ async function seedMaritimeSections(
       durationMinutes:
         25,
       questionsPerAttempt:
-        6,
+        20,
       sortOrder:
         2,
     },
@@ -476,7 +476,7 @@ async function seedMaritimeSections(
       durationMinutes:
         25,
       questionsPerAttempt:
-        6,
+        20,
       sortOrder:
         3,
     },

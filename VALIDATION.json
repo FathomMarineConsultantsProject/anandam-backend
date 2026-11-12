@@ -1,0 +1,21 @@
+{
+  "source_rows": 2900,
+  "cog_source_rows": 800,
+  "att_source_rows": 800,
+  "cog_source_mcq_preserved": 650,
+  "cog_open_normalized": 150,
+  "att_source_mcq_preserved": 500,
+  "att_open_normalized": 300,
+  "final_maritime_questions": 1750,
+  "final_by_section": {
+    "PJS": 850,
+    "PLA": 850,
+    "SHF": 50
+  },
+  "questions_per_attempt_by_section": {
+    "PJS": 20,
+    "PLA": 20,
+    "SHF": 20
+  },
+  "questions_per_attempt_total": 60
+}

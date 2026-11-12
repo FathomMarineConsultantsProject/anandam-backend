@@ -11,6 +11,9 @@ import maritimeQuestionBank
   from "./data/maritimeQuestionBank.json";
 
 
+import personalPsychometricQuestionBank
+  from "./data/personalPsychometricQuestionBank.json";
+
 const prisma =
   new PrismaClient();
 
@@ -124,124 +127,125 @@ const BEHAVIOURAL:
   [
     "BP-01",
     "I enjoy solving complex problems that require logical thinking.",
-    "ANALYTICAL_REFLECTIVE_THINKING",
+    "ANALYTICAL_THINKING",
     false,
   ],
   [
     "BP-02",
     "I speak up confidently when I disagree with someone.",
-    "ASSERTIVENESS_SOCIAL_CONFIDENCE",
+    "ASSERTIVE_COMMUNICATION",
     false,
   ],
   [
     "BP-03",
     "I prefer working behind the scenes rather than being the center of attention.",
-    "ASSERTIVENESS_SOCIAL_CONFIDENCE",
-    true,
+    "RESERVED_EXPRESSION",
+    false,
   ],
   [
     "BP-04",
     "I follow established rules and procedures even when they make a task slower.",
-    "INDEPENDENT_SELF_DIRECTED",
-    true,
+    "STRUCTURE_ORIENTATION",
+    false,
   ],
   [
     "BP-05",
     "I adapt quickly when unexpected changes occur.",
-    "ADAPTABILITY_OPENNESS_CHANGE",
+    "ADAPTABILITY",
     false,
   ],
   [
     "BP-06",
     "I rely more on facts and evidence than intuition when making important decisions.",
-    "ANALYTICAL_REFLECTIVE_THINKING",
+    "ANALYTICAL_THINKING",
     false,
   ],
   [
     "BP-07",
     "I am comfortable making calculated decisions when all the information is not available.",
-    "INDEPENDENT_SELF_DIRECTED",
+    "DECISIVENESS_INITIATIVE",
     false,
   ],
   [
     "BP-08",
     "I am strongly affected by art, music, creativity, or beautiful surroundings.",
-    "EMOTIONAL_COMPOSURE_SENSITIVITY",
+    "SENSITIVITY_REFLECTION",
     false,
   ],
   [
     "BP-09",
     "I usually keep my personal feelings private.",
-    "INDEPENDENT_SELF_DIRECTED",
+    "RESERVED_EXPRESSION",
     false,
   ],
   [
     "BP-10",
     "I often think deeply about the reasons behind events and experiences.",
-    "ANALYTICAL_REFLECTIVE_THINKING",
+    "SENSITIVITY_REFLECTION",
     false,
   ],
   [
     "BP-11",
     "I feel comfortable speaking or presenting in front of a large audience.",
-    "ASSERTIVENESS_SOCIAL_CONFIDENCE",
+    "ASSERTIVE_COMMUNICATION",
     false,
   ],
   [
     "BP-12",
     "I prefer proven and traditional methods over completely new approaches.",
-    "ADAPTABILITY_OPENNESS_CHANGE",
-    true,
+    "STRUCTURE_ORIENTATION",
+    false,
   ],
   [
     "BP-13",
     "I naturally take charge when a group lacks clear direction.",
-    "ASSERTIVENESS_SOCIAL_CONFIDENCE",
+    "DECISIVENESS_INITIATIVE",
     false,
   ],
   [
     "BP-14",
     "I can become distracted when there is noise or activity around me.",
-    "EMOTIONAL_COMPOSURE_SENSITIVITY",
+    "FOCUS_RESILIENCE",
     true,
   ],
   [
     "BP-15",
     "I enjoy understanding the motives behind people's behaviour.",
-    "ANALYTICAL_REFLECTIVE_THINKING",
+    "SOCIAL_INSIGHT_DIPLOMACY",
     false,
   ],
   [
     "BP-16",
     "I remain polite and respectful even when I am frustrated or disagree strongly.",
-    "EMOTIONAL_COMPOSURE_SENSITIVITY",
+    "SOCIAL_INSIGHT_DIPLOMACY",
     false,
   ],
   [
     "BP-17",
     "I prefer completing important tasks independently rather than depending heavily on others.",
-    "INDEPENDENT_SELF_DIRECTED",
+    "INDEPENDENT_JUDGEMENT",
     false,
   ],
   [
     "BP-18",
     "I am comfortable questioning existing rules or authority when I believe improvement is needed.",
-    "ADAPTABILITY_OPENNESS_CHANGE",
+    "INDEPENDENT_JUDGEMENT",
     false,
   ],
   [
     "BP-19",
     "Criticism of my work or ideas can affect me strongly.",
-    "EMOTIONAL_COMPOSURE_SENSITIVITY",
+    "FOCUS_RESILIENCE",
     true,
   ],
   [
     "BP-20",
     "I prefer a predictable routine rather than frequent unexpected changes.",
-    "ADAPTABILITY_OPENNESS_CHANGE",
+    "ADAPTABILITY",
     true,
   ],
 ];
+
 
 const MOTIVATION_VALUES: readonly LikertDimensionSeed[] = [
   [
@@ -782,6 +786,201 @@ async function seedMappedLikert(
 }
 
 
+type ImportedProfileQuestion = {
+  itemCode: string;
+  targetTestType:
+    | "BIG_FIVE"
+    | "PERSONALITY_16PF"
+    | "MOTIVATION_VALUES";
+  traitKey: string;
+  domain: string;
+  questionText: string;
+  responseFormat: string;
+  sourceOptions: string;
+  reverseScored: boolean;
+  pairId: string | null;
+  pairType: string | null;
+  origin: string | null;
+  access: string | null;
+  activeForCurrentEngine: boolean;
+};
+
+
+async function seedImportedProfileQuestionBank(
+  testIds: Map<
+    PsychometricTestType,
+    string
+  >
+) {
+  const bank =
+    personalPsychometricQuestionBank as
+      ImportedProfileQuestion[];
+
+
+  let imported =
+    0;
+
+  let deferred =
+    0;
+
+
+  for (
+    let index = 0;
+    index < bank.length;
+    index += 1
+  ) {
+    const question =
+      bank[index];
+
+
+    /*
+      Current Personality / Behavioural / Motivation
+      engine is a scored 1-5 Likert engine.
+
+      Keep unsupported narrative / descriptive items in
+      the source JSON for later, but do not activate them
+      until the response engine supports those formats.
+    */
+
+    if (
+      !question.activeForCurrentEngine
+    ) {
+      deferred +=
+        1;
+
+      continue;
+    }
+
+
+    const testType =
+      question.targetTestType as
+        PsychometricTestType;
+
+
+    const testId =
+      testIds.get(
+        testType
+      );
+
+
+    if (!testId) {
+      throw new Error(
+        `Missing psychometric test for imported question ${question.itemCode}.`
+      );
+    }
+
+
+    await prisma
+      .psychometricQuestion
+      .upsert({
+        where: {
+          itemCode:
+            question.itemCode,
+        },
+
+        update: {
+          testId,
+
+          sectionId:
+            null,
+
+          domain:
+            question.domain,
+
+          /*
+            Reuse the existing optional competency field
+            to retain the source response format without
+            requiring a database migration.
+          */
+          competency:
+            question.responseFormat,
+
+          questionText:
+            question.questionText,
+
+          questionType:
+            PsychometricQuestionType
+              .LIKERT_5,
+
+          optionA:
+            null,
+
+          optionB:
+            null,
+
+          optionC:
+            null,
+
+          optionD:
+            null,
+
+          correctOption:
+            null,
+
+          traitKey:
+            question.traitKey,
+
+          reverseScored:
+            question.reverseScored,
+
+          sortOrder:
+            1000 + index,
+
+          isActive:
+            true,
+        },
+
+        create: {
+          testId,
+
+          sectionId:
+            null,
+
+          itemCode:
+            question.itemCode,
+
+          domain:
+            question.domain,
+
+          competency:
+            question.responseFormat,
+
+          questionText:
+            question.questionText,
+
+          questionType:
+            PsychometricQuestionType
+              .LIKERT_5,
+
+          traitKey:
+            question.traitKey,
+
+          reverseScored:
+            question.reverseScored,
+
+          sortOrder:
+            1000 + index,
+
+          isActive:
+            true,
+        },
+      });
+
+
+    imported +=
+      1;
+  }
+
+
+  return {
+    imported,
+    deferred,
+    total:
+      bank.length,
+  };
+}
+
+
 async function main() {
   console.log(
     "Seeding psychometric assessments..."
@@ -843,9 +1042,25 @@ async function main() {
     MOTIVATION_VALUES
   );
 
+
+  const importedBank =
+    await seedImportedProfileQuestionBank(
+      testIds
+    );
+
+
   console.log(
     "Psychometric assessments seeded successfully."
   );
+
+  console.log({
+    importedProfileQuestions:
+      importedBank.imported,
+    deferredProfileQuestions:
+      importedBank.deferred,
+    suppliedProfileBankTotal:
+      importedBank.total,
+  });
 
   console.log({
     maritimeQuestions:

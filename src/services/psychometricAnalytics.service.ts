@@ -35,6 +35,70 @@ const LIKERT_LABELS:
 };
 
 
+function getLikertResponseLabel(
+  responseFormat:
+    | string
+    | null
+    | undefined,
+  value: number
+) {
+  const format =
+    String(
+      responseFormat ||
+      ""
+    ).trim();
+
+
+  if (
+    format ===
+    "Observed-behaviour frequency"
+  ) {
+    const labels:
+      Record<number, string> = {
+      1: "Never",
+      2: "Rarely",
+      3: "Sometimes",
+      4: "Often",
+      5: "Almost always",
+    };
+
+
+    return (
+      labels[value] ||
+      String(value)
+    );
+  }
+
+
+  if (
+    format ===
+    "Self-report Likert"
+  ) {
+    const labels:
+      Record<number, string> = {
+      1: "Never / Strongly Disagree",
+      2: "Rarely / Disagree",
+      3: "Sometimes / Neutral",
+      4: "Often / Agree",
+      5: "Almost always / Strongly Agree",
+    };
+
+
+    return (
+      labels[value] ||
+      String(value)
+    );
+  }
+
+
+  return (
+    LIKERT_LABELS[value] ||
+    String(value)
+  );
+}
+
+
+
 /* ======================================================
    PROFILE DIMENSION DEFINITIONS
 
@@ -1603,12 +1667,16 @@ export async function getPsychometricAnalysis(
       scoredValue,
 
       response:
-        LIKERT_LABELS[
-          rawValue
-        ] ||
-        String(
+        getLikertResponseLabel(
+          item.question
+            .competency,
           rawValue
         ),
+
+      responseFormat:
+        item.question
+          .competency ||
+        null,
 
       reverseScored:
         item.question

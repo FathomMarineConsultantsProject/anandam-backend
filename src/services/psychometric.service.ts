@@ -250,6 +250,279 @@ function shuffle<T>(
 }
 
 
+const PROFILE_QUESTIONS_PER_ATTEMPT =
+  60;
+
+
+const PROFILE_TRAITS_BY_TEST:
+  Partial<
+    Record<
+      PsychometricTestType,
+      readonly string[]
+    >
+  > = {
+    [PsychometricTestType.BIG_FIVE]: [
+      "OPENNESS",
+      "CONSCIENTIOUSNESS",
+      "EXTRAVERSION",
+      "AGREEABLENESS",
+      "EMOTIONAL_STABILITY",
+    ],
+
+    [PsychometricTestType.PERSONALITY_16PF]: [
+      "ANALYTICAL_THINKING",
+      "ASSERTIVE_COMMUNICATION",
+      "RESERVED_EXPRESSION",
+      "STRUCTURE_ORIENTATION",
+      "ADAPTABILITY",
+      "DECISIVENESS_INITIATIVE",
+      "SENSITIVITY_REFLECTION",
+      "FOCUS_RESILIENCE",
+      "SOCIAL_INSIGHT_DIPLOMACY",
+      "INDEPENDENT_JUDGEMENT",
+    ],
+
+    [PsychometricTestType.MOTIVATION_VALUES]: [
+      "GROWTH_ACHIEVEMENT",
+      "AUTONOMY_LEADERSHIP",
+      "COLLABORATION_RELATIONSHIPS",
+      "STABILITY_WELLBEING",
+      "PURPOSE_ETHICS",
+    ],
+  };
+
+
+function getLikertOptionsForQuestion(
+  question: any
+) {
+  const sourceFormat =
+    String(
+      question.competency ||
+      ""
+    ).trim();
+
+
+  if (
+    sourceFormat ===
+    "Observed-behaviour frequency"
+  ) {
+    return [
+      {
+        value: 1,
+        label: "Never",
+      },
+      {
+        value: 2,
+        label: "Rarely",
+      },
+      {
+        value: 3,
+        label: "Sometimes",
+      },
+      {
+        value: 4,
+        label: "Often",
+      },
+      {
+        value: 5,
+        label: "Almost always",
+      },
+    ];
+  }
+
+
+  if (
+    sourceFormat ===
+    "Self-report Likert"
+  ) {
+    return [
+      {
+        value: 1,
+        label:
+          "Never / Strongly Disagree",
+      },
+      {
+        value: 2,
+        label:
+          "Rarely / Disagree",
+      },
+      {
+        value: 3,
+        label:
+          "Sometimes / Neutral",
+      },
+      {
+        value: 4,
+        label:
+          "Often / Agree",
+      },
+      {
+        value: 5,
+        label:
+          "Almost always / Strongly Agree",
+      },
+    ];
+  }
+
+
+  return [
+    {
+      value: 1,
+      label:
+        "Strongly Disagree",
+    },
+    {
+      value: 2,
+      label:
+        "Disagree",
+    },
+    {
+      value: 3,
+      label:
+        "Neutral",
+    },
+    {
+      value: 4,
+      label:
+        "Agree",
+    },
+    {
+      value: 5,
+      label:
+        "Strongly Agree",
+    },
+  ];
+}
+
+
+async function selectProfileQuestions(
+  tx: Prisma.TransactionClient,
+  testId: string,
+  testType: PsychometricTestType
+) {
+  const traits =
+    PROFILE_TRAITS_BY_TEST[
+      testType
+    ];
+
+
+  if (
+    !traits ||
+    traits.length === 0
+  ) {
+    throw new PsychometricError(
+      "No profile-dimension configuration is available for this assessment.",
+      500,
+      "PROFILE_TRAITS_NOT_CONFIGURED"
+    );
+  }
+
+
+  if (
+    PROFILE_QUESTIONS_PER_ATTEMPT %
+      traits.length !==
+    0
+  ) {
+    throw new PsychometricError(
+      "Profile question-count configuration is invalid.",
+      500,
+      "PROFILE_QUESTION_COUNT_INVALID"
+    );
+  }
+
+
+  const questionsPerTrait =
+    PROFILE_QUESTIONS_PER_ATTEMPT /
+    traits.length;
+
+
+  const questions =
+    await tx
+      .psychometricQuestion
+      .findMany({
+        where: {
+          testId,
+
+          isActive:
+            true,
+
+          questionType:
+            PsychometricQuestionType
+              .LIKERT_5,
+
+          traitKey: {
+            in:
+              [...traits],
+          },
+        },
+      });
+
+
+  const selected:
+    typeof questions =
+    [];
+
+
+  for (
+    const traitKey
+    of traits
+  ) {
+    const pool =
+      shuffle(
+        questions.filter(
+          (question) =>
+            question.traitKey ===
+            traitKey
+        )
+      );
+
+
+    if (
+      pool.length <
+      questionsPerTrait
+    ) {
+      throw new PsychometricError(
+        `Not enough active ${traitKey} questions. Need ${questionsPerTrait}, found ${pool.length}.`,
+        500,
+        "PROFILE_QUESTION_POOL_TOO_SMALL",
+        {
+          testType,
+          traitKey,
+          required:
+            questionsPerTrait,
+          available:
+            pool.length,
+        }
+      );
+    }
+
+
+    selected.push(
+      ...pool.slice(
+        0,
+        questionsPerTrait
+      )
+    );
+  }
+
+
+  /*
+    Every profile attempt gets 60 total questions.
+
+    - Personality Insights: 12 from each of 5 dimensions
+    - Behavioural Patterns: 6 from each of 10 dimensions
+    - Motivation & Values: 12 from each of 5 dimensions
+
+    Shuffle once more so dimensions are mixed throughout
+    the assessment rather than appearing in blocks.
+  */
+
+  return shuffle(
+    selected
+  );
+}
+
+
 function sanitizeQuestion(
   question: any
 ) {
@@ -282,33 +555,10 @@ function sanitizeQuestion(
       competency:
         question.competency,
 
-      options: [
-        {
-          value: 1,
-          label:
-            "Strongly Disagree",
-        },
-        {
-          value: 2,
-          label:
-            "Disagree",
-        },
-        {
-          value: 3,
-          label:
-            "Neutral",
-        },
-        {
-          value: 4,
-          label:
-            "Agree",
-        },
-        {
-          value: 5,
-          label:
-            "Strongly Agree",
-        },
-      ],
+      options:
+        getLikertOptionsForQuestion(
+          question
+        ),
     };
   }
 
@@ -915,6 +1165,20 @@ export async function listPsychometricTests(
             walletBalance,
 
             questionCount:
+              test.type ===
+              PsychometricTestType.MARITIME_HUMAN_PERFORMANCE
+                ? test.sections.reduce(
+                    (
+                      total,
+                      section
+                    ) =>
+                      total +
+                      section.questionsPerAttempt,
+                    0
+                  )
+                : PROFILE_QUESTIONS_PER_ATTEMPT,
+
+            questionBankCount:
               test._count.questions,
 
             sections:
@@ -1133,6 +1397,20 @@ export async function getPsychometricTest(
     walletBalance,
 
     questionCount:
+      test.type ===
+      PsychometricTestType.MARITIME_HUMAN_PERFORMANCE
+        ? test.sections.reduce(
+            (
+              total,
+              section
+            ) =>
+              total +
+              section.questionsPerAttempt,
+            0
+          )
+        : PROFILE_QUESTIONS_PER_ATTEMPT,
+
+    questionBankCount:
       test._count.questions,
 
     sections:
@@ -1522,51 +1800,33 @@ export async function startPsychometricAttempt(
 
         else {
           const questions =
-            await tx.psychometricQuestion.findMany({
-              where: {
-                testId:
-                  test.id,
-
-                isActive:
-                  true,
-              },
-
-              orderBy: {
-                sortOrder:
-                  "asc",
-              },
-            });
-
-
-          if (
-            questions.length ===
-            0
-          ) {
-            throw new PsychometricError(
-              "No active questions are available for this assessment.",
-              500
+            await selectProfileQuestions(
+              tx,
+              test.id,
+              test.type
             );
-          }
 
 
-          await tx.psychometricAttemptQuestion.createMany({
-            data:
-              questions.map(
-                (
-                  question,
-                  index
-                ) => ({
-                  attemptId:
-                    created.id,
+          await tx
+            .psychometricAttemptQuestion
+            .createMany({
+              data:
+                questions.map(
+                  (
+                    question,
+                    index
+                  ) => ({
+                    attemptId:
+                      created.id,
 
-                  questionId:
-                    question.id,
+                    questionId:
+                      question.id,
 
-                  questionOrder:
-                    index + 1,
-                })
-              ),
-          });
+                    questionOrder:
+                      index + 1,
+                  })
+                ),
+            });
         }
 
 

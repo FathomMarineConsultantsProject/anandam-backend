@@ -435,6 +435,175 @@ const workouts = [
   isActive: true,
   sortOrder: 15,
 },
+{
+  slug: "motivation-xrr2exxa088",
+  type: "GUIDED",
+  title: "Motivation 01",
+  category: "MOTIVATION",
+  difficulty: "BEGINNER",
+  durationMinutes: 10,
+
+  shortDescription:
+    "A motivational session designed to encourage a positive mindset, determination, and personal growth.",
+
+  about:
+    "Take a short break from your routine and use this motivational session to reset your mindset, regain focus, and approach your goals with renewed energy.",
+
+  thumbnailUrl:
+    "https://i.ytimg.com/vi/xRR2EXxa088/hqdefault.jpg",
+
+  youtubeVideoId: "xRR2EXxa088",
+
+  benefits: [
+    "Supports a positive mindset",
+    "Encourages motivation and focus",
+    "Provides a mental reset",
+  ],
+
+  beforeYouBegin: [],
+
+  requiredEquipment: [],
+
+  vrLaunchUrl: null,
+  isActive: true,
+  sortOrder: 16,
+},
+
+{
+  slug: "motivation-2ilpjunzoko",
+  type: "GUIDED",
+  title: "Motivation 02",
+  category: "MOTIVATION",
+  difficulty: "BEGINNER",
+  durationMinutes: 10,
+
+  shortDescription:
+    "A motivational video to encourage confidence, focus, and perseverance.",
+
+  about:
+    "Use this session whenever you need encouragement or a change in mindset. Listen comfortably and take a moment to reflect on the message.",
+
+  thumbnailUrl:
+    "https://i.ytimg.com/vi/2ILPJUNZOko/hqdefault.jpg",
+
+  youtubeVideoId: "2ILPJUNZOko",
+
+  benefits: [
+    "Encourages confidence",
+    "Supports mental focus",
+    "Promotes perseverance",
+  ],
+
+  beforeYouBegin: [],
+
+  requiredEquipment: [],
+
+  vrLaunchUrl: null,
+  isActive: true,
+  sortOrder: 17,
+},
+
+{
+  slug: "motivation-pgudwfb8nlg",
+  type: "GUIDED",
+  title: "Motivation 03",
+  category: "MOTIVATION",
+  difficulty: "BEGINNER",
+  durationMinutes: 10,
+
+  shortDescription:
+    "An inspiring motivational session focused on determination, resilience, and moving forward.",
+
+  about:
+    "Take a few quiet minutes to listen and reflect. Use the session as a positive mental break during a demanding day.",
+
+  thumbnailUrl:
+    "https://i.ytimg.com/vi/PGUdWfB8nLg/hqdefault.jpg",
+
+  youtubeVideoId: "PGUdWfB8nLg",
+
+  benefits: [
+    "Encourages resilience",
+    "Supports a positive outlook",
+    "Helps restore motivation",
+  ],
+
+  beforeYouBegin: [],
+
+  requiredEquipment: [],
+
+  vrLaunchUrl: null,
+  isActive: true,
+  sortOrder: 18,
+},
+
+{
+  slug: "motivation-0iqozbd0xog",
+  type: "GUIDED",
+  title: "Motivation 04",
+  category: "MOTIVATION",
+  difficulty: "BEGINNER",
+  durationMinutes: 10,
+
+  shortDescription:
+    "A short motivational session for building confidence and maintaining a determined mindset.",
+
+  about:
+    "Use this session when you need encouragement, renewed focus, or a simple mental reset before continuing your day.",
+
+  thumbnailUrl:
+    "https://i.ytimg.com/vi/0IQozBD0xOg/hqdefault.jpg",
+
+  youtubeVideoId: "0IQozBD0xOg",
+
+  benefits: [
+    "Supports confidence",
+    "Encourages determination",
+    "Provides a positive mental break",
+  ],
+
+  beforeYouBegin: [],
+
+  requiredEquipment: [],
+
+  vrLaunchUrl: null,
+  isActive: true,
+  sortOrder: 19,
+},
+
+{
+  slug: "motivation-n-nqwtsvqzy",
+  type: "GUIDED",
+  title: "Motivation 05",
+  category: "MOTIVATION",
+  difficulty: "BEGINNER",
+  durationMinutes: 10,
+
+  shortDescription:
+    "A motivational session designed to encourage focus, self-belief, and consistent progress.",
+
+  about:
+    "Listen during a quiet moment and use the message as encouragement to stay focused, keep progressing, and approach challenges with a positive mindset.",
+
+  thumbnailUrl:
+    "https://i.ytimg.com/vi/n_NQwTSVqzY/hqdefault.jpg",
+
+  youtubeVideoId: "n_NQwTSVqzY",
+
+  benefits: [
+    "Encourages self-belief",
+    "Supports sustained motivation",
+    "Promotes a growth mindset",
+  ],
+
+  beforeYouBegin: [],
+
+  requiredEquipment: [],
+
+  vrLaunchUrl: null,
+  isActive: true,
+  sortOrder: 20,
+},
 
 ];
 

@@ -207,6 +207,235 @@ const workouts = [
   sortOrder: 9,
 },
 
+{
+  slug: "guided-workout-obs-pe34x7g",
+  type: "GUIDED",
+  title: "Guided Workout 07",
+  category: "STRENGTH",
+  difficulty: "BEGINNER",
+  durationMinutes: 20,
+
+  shortDescription:
+    "A beginner-friendly full-body workout using basic gym equipment.",
+
+  about:
+    "Follow this beginner workout at a comfortable pace. Use only equipment you are familiar with and make sure the exercise area is clear and safe before starting.",
+
+  thumbnailUrl:
+    "https://i.ytimg.com/vi/oBs-PE34x7g/hqdefault.jpg",
+
+  youtubeVideoId: "oBs-PE34x7g",
+
+  benefits: [
+    "Supports full-body strength",
+    "Builds confidence with basic gym equipment",
+    "Encourages regular physical activity",
+  ],
+
+  beforeYouBegin: [
+    "Make sure the exercise area is clear.",
+    "Check that any equipment is secure before use.",
+    "Start slowly and use a comfortable resistance.",
+  ],
+
+  requiredEquipment: [],
+
+  vrLaunchUrl: null,
+  isActive: true,
+  sortOrder: 10,
+},
+
+{
+  slug: "guided-workout-e9zobjomnqg",
+  type: "GUIDED",
+  title: "Guided Workout 08",
+  category: "STRENGTH",
+  difficulty: "BEGINNER",
+  durationMinutes: 20,
+
+  shortDescription:
+    "A guided beginner strength session focused on controlled movement and building strength.",
+
+  about:
+    "Follow the strength exercises at a comfortable pace and maintain controlled movement throughout the session.",
+
+  thumbnailUrl:
+    "https://i.ytimg.com/vi/e9ZobJOMnqg/hqdefault.jpg",
+
+  youtubeVideoId: "e9ZobJOMnqg",
+
+  benefits: [
+    "Supports functional strength",
+    "Encourages controlled movement",
+    "Helps build a regular strength routine",
+  ],
+
+  beforeYouBegin: [
+    "Use a clear and stable exercise area.",
+    "Warm up before beginning the session.",
+    "Stop if you feel pain or unusual discomfort.",
+  ],
+
+  requiredEquipment: [],
+
+  vrLaunchUrl: null,
+  isActive: true,
+  sortOrder: 11,
+},
+
+{
+  slug: "guided-workout-digpucxfbmo",
+  type: "GUIDED",
+  title: "Guided Workout 09",
+  category: "YOGA",
+  difficulty: "BEGINNER",
+  durationMinutes: 20,
+
+  shortDescription:
+    "A beginner guided yoga session supporting flexibility, movement, and wellbeing.",
+
+  about:
+    "Follow the session within your comfortable range of motion. Avoid forcing any stretch or position and take breaks whenever needed.",
+
+  thumbnailUrl:
+    "https://i.ytimg.com/vi/digpucxFbMo/hqdefault.jpg",
+
+  youtubeVideoId: "digpucxFbMo",
+
+  benefits: [
+    "Supports flexibility",
+    "Encourages mindful movement",
+    "Promotes regular physical activity",
+  ],
+
+  beforeYouBegin: [
+    "Choose a clear and comfortable exercise space.",
+    "Wear comfortable clothing.",
+    "Do not force any movement or stretch.",
+  ],
+
+  requiredEquipment: [],
+
+  vrLaunchUrl: null,
+  isActive: true,
+  sortOrder: 12,
+},
+
+{
+  slug: "guided-workout-7rsxrttbfl4",
+  type: "GUIDED",
+  title: "Guided Workout 10",
+  category: "CARDIO",
+  difficulty: "ADVANCED",
+  durationMinutes: 20,
+
+  shortDescription:
+    "An advanced cardio workout designed to challenge stamina and cardiovascular endurance.",
+
+  about:
+    "This is a higher-intensity cardio session. Exercise at an appropriate pace, take breaks when necessary, and stop immediately if you experience pain, dizziness, or unusual discomfort.",
+
+  thumbnailUrl:
+    "https://i.ytimg.com/vi/7RsxRTtBfl4/hqdefault.jpg",
+
+  youtubeVideoId: "7RsxRTtBfl4",
+
+  benefits: [
+    "Supports cardiovascular endurance",
+    "Helps improve stamina",
+    "Provides a higher-intensity exercise session",
+  ],
+
+  beforeYouBegin: [
+    "Warm up before starting.",
+    "Make sure you have enough clear exercise space.",
+    "Keep water nearby.",
+    "Reduce intensity or stop if you feel unwell.",
+  ],
+
+  requiredEquipment: [],
+
+  vrLaunchUrl: null,
+  isActive: true,
+  sortOrder: 13,
+},
+
+{
+  slug: "guided-workout-esbkfnrg97g",
+  type: "GUIDED",
+  title: "Guided Workout 11",
+  category: "BALANCE",
+  difficulty: "BEGINNER",
+  durationMinutes: 20,
+
+  shortDescription:
+    "A beginner balance workout supporting stability, coordination, and controlled movement.",
+
+  about:
+    "Follow the balance exercises slowly and with control. Use a stable area and keep suitable support nearby if required.",
+
+  thumbnailUrl:
+    "https://i.ytimg.com/vi/ESBkfnRg97g/hqdefault.jpg",
+
+  youtubeVideoId: "ESBkfnRg97g",
+
+  benefits: [
+    "Supports balance",
+    "Encourages coordination",
+    "Improves movement control",
+  ],
+
+  beforeYouBegin: [
+    "Choose a stable, non-slip exercise area.",
+    "Keep a wall or stable support nearby if needed.",
+    "Perform each movement slowly and carefully.",
+  ],
+
+  requiredEquipment: [],
+
+  vrLaunchUrl: null,
+  isActive: true,
+  sortOrder: 14,
+},
+
+{
+  slug: "guided-workout-awbqvj39skm",
+  type: "GUIDED",
+  title: "Guided Workout 12",
+  category: "BALANCE",
+  difficulty: "BEGINNER",
+  durationMinutes: 10,
+
+  shortDescription:
+    "A short beginner movement session supporting balance, mobility, and preparation for exercise.",
+
+  about:
+    "Use this short guided session to gently prepare the body for movement. Follow each exercise at a comfortable pace in a clear and stable area.",
+
+  thumbnailUrl:
+    "https://i.ytimg.com/vi/awBQVJ39sKM/hqdefault.jpg",
+
+  youtubeVideoId: "awBQVJ39sKM",
+
+  benefits: [
+    "Supports balance and mobility",
+    "Helps prepare the body for exercise",
+    "Encourages controlled movement",
+  ],
+
+  beforeYouBegin: [
+    "Use a clear and stable exercise area.",
+    "Move gradually without forcing your range of motion.",
+    "Stop if you feel pain or dizziness.",
+  ],
+
+  requiredEquipment: [],
+
+  vrLaunchUrl: null,
+  isActive: true,
+  sortOrder: 15,
+},
+
 ];
 
 async function main() {

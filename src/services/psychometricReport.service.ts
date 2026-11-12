@@ -426,14 +426,169 @@ function hasBigFiveRadarPage(
 }
 
 
-function profileReportPageTotal(
+function profileResponsePageCount(
+  doc: PDFKit.PDFDocument,
   analysis: any
 ) {
-  return hasBigFiveRadarPage(
-    analysis
-  )
-    ? 4
-    : 3;
+  const responses =
+    Array.isArray(
+      analysis?.responses
+    )
+      ? analysis.responses
+      : [];
+
+
+  if (
+    responses.length ===
+    0
+  ) {
+    return 1;
+  }
+
+
+  const width =
+    doc.page.width -
+    48;
+
+
+  const columns = {
+    question:
+      30,
+
+    statement:
+      310,
+
+    dimension:
+      105,
+
+    response:
+      width -
+      445,
+  };
+
+
+  const firstRowY =
+    123;
+
+
+  const bottomLimit =
+    doc.page.height -
+    45;
+
+
+  let pageCount =
+    1;
+
+
+  let y =
+    firstRowY;
+
+
+  doc
+    .font(
+      "Helvetica"
+    )
+    .fontSize(
+      7.2
+    );
+
+
+  for (
+    const response
+    of responses
+  ) {
+    const statementHeight =
+      doc.heightOfString(
+        response.questionText ||
+          "",
+        {
+          width:
+            columns.statement -
+            10,
+
+          lineGap:
+            0,
+        }
+      );
+
+
+    const dimensionHeight =
+      doc.heightOfString(
+        response.dimensionLabel ||
+          "",
+        {
+          width:
+            columns.dimension -
+            8,
+        }
+      );
+
+
+    const responseHeight =
+      doc.heightOfString(
+        response.response ||
+          "",
+        {
+          width:
+            columns.response -
+            8,
+        }
+      );
+
+
+    const rowHeight =
+      Math.max(
+        26,
+        statementHeight +
+          10,
+        dimensionHeight +
+          10,
+        responseHeight +
+          10
+      );
+
+
+    if (
+      y +
+        rowHeight >
+      bottomLimit
+    ) {
+      pageCount +=
+        1;
+
+      y =
+        firstRowY;
+    }
+
+
+    y +=
+      rowHeight;
+  }
+
+
+  return pageCount;
+}
+
+
+function profileReportPageTotal(
+  doc: PDFKit.PDFDocument,
+  analysis: any
+) {
+  return (
+    1 +
+    (
+      hasBigFiveRadarPage(
+        analysis
+      )
+        ? 1
+        : 0
+    ) +
+    profileResponsePageCount(
+      doc,
+      analysis
+    ) +
+    1
+  );
 }
 
 
@@ -1929,6 +2084,7 @@ doc
   drawPageFooter(
     doc,
     `Page 1 of ${profileReportPageTotal(
+      doc,
       analysis
     )}`
   );
@@ -2719,7 +2875,10 @@ function writeProfileRadarPage(
 
   drawPageFooter(
     doc,
-    "Page 2 of 4"
+    `Page 2 of ${profileReportPageTotal(
+      doc,
+      analysis
+    )}`
   );
 }
 
@@ -3035,6 +3194,21 @@ function writeProfileResponsesTable(
       : [];
 
 
+  const totalReportPages =
+    profileReportPageTotal(
+      doc,
+      analysis
+    );
+
+
+  let responsePageNumber =
+    hasBigFiveRadarPage(
+      analysis
+    )
+      ? 3
+      : 2;
+
+
   for (
     const response
     of responses
@@ -3107,8 +3281,12 @@ function writeProfileResponsesTable(
     ) {
       drawPageFooter(
         doc,
-        "Your Responses"
+        `Page ${responsePageNumber} of ${totalReportPages}`
       );
+
+
+      responsePageNumber +=
+        1;
 
 
       doc.addPage();
@@ -3253,19 +3431,9 @@ function writeProfileResponsesTable(
   }
 
 
-  const responsePageNumber =
-    hasBigFiveRadarPage(
-      analysis
-    )
-      ? 3
-      : 2;
-
-
   drawPageFooter(
     doc,
-    `Page ${responsePageNumber} of ${profileReportPageTotal(
-      analysis
-    )}`
+    `Page ${responsePageNumber} of ${totalReportPages}`
   );
 }
 
@@ -3713,18 +3881,15 @@ function writeLegalPage(
 
 
   const legalPageNumber =
-    hasBigFiveRadarPage(
+    profileReportPageTotal(
+      doc,
       analysis
-    )
-      ? 4
-      : 3;
+    );
 
 
   drawPageFooter(
     doc,
-    `Page ${legalPageNumber} of ${profileReportPageTotal(
-      analysis
-    )}`
+    `Page ${legalPageNumber} of ${legalPageNumber}`
   );
 
   // ====================================================

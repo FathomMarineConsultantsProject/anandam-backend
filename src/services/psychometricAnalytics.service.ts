@@ -897,10 +897,47 @@ export async function getPsychometricAnalysis(
       );
 
 
-    const overall =
+    /*
+      The original Maritime result wording was authored for
+      6 questions per capability / 18 overall.
+
+      The assessment now uses 20 questions per capability /
+      60 overall. Scale only for the legacy wording lookup,
+      while keeping the real score and percentage below.
+    */
+    const legacyOverallScore =
+      total > 0
+        ? Math.round(
+            (
+              correct /
+              total
+            ) *
+            18
+          )
+        : 0;
+
+
+    const overallBase =
       getMaritimeOverallResult(
-        correct
+        legacyOverallScore
       );
+
+
+    const overall = {
+      ...overallBase,
+
+      score:
+        correct,
+
+      maxScore:
+        total,
+
+      percentage:
+        round(
+          percentage,
+          1
+        ),
+    };
 
 
     /* ==================================================
@@ -957,12 +994,24 @@ export async function getPsychometricAnalysis(
                 : 0;
 
 
+            const legacyCapabilityScore =
+              maxScore > 0
+                ? Math.round(
+                    (
+                      score /
+                      maxScore
+                    ) *
+                    6
+                  )
+                : 0;
+
+
             const capability =
               getMaritimeCapabilityResult(
                 String(
                   item.section.code
                 ),
-                score
+                legacyCapabilityScore
               );
 
 
@@ -1020,48 +1069,44 @@ export async function getPsychometricAnalysis(
         (
           section
         ) => {
-          const capability =
-            getMaritimeCapabilityResult(
-              String(
-                section.code
-              ),
-              section.score
-            );
-
-
           return {
             key:
-              capability.key,
+              section.capabilityKey,
 
             code:
               section.code,
 
             label:
-              capability.label,
+              section.capabilityLabel,
 
             title:
-              capability.label,
+              section.capabilityLabel,
+
+            /*
+              Expose the real 20-question section score,
+              not the internal 0-6 legacy lookup score.
+            */
 
             score:
-              capability.score,
+              section.score,
 
             maxScore:
-              capability.maxScore,
+              section.maxScore,
 
             percentage:
-              capability.percentage,
+              section.percentage,
 
             band:
-              capability.band,
+              section.level,
 
             level:
-              capability.level,
+              section.level,
 
             resultTitle:
-              capability.resultTitle,
+              section.resultTitle,
 
             resultText:
-              capability.resultText,
+              section.resultText,
           };
         }
       );
@@ -1183,8 +1228,8 @@ export async function getPsychometricAnalysis(
           (
             capability
           ) =>
-            capability.score >=
-            4
+            capability.percentage >=
+            66.7
         )
         .slice(
           0,
@@ -1221,8 +1266,8 @@ export async function getPsychometricAnalysis(
           (
             capability
           ) =>
-            capability.score <=
-            3
+            capability.percentage <=
+            50
         )
         .sort(
           (

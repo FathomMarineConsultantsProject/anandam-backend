@@ -1,0 +1,4 @@
+source_section,target_maritime_section,new_questions,source_mcq_preserved,open_response_normalized_to_mcq,final_section_pool_including_existing,questions_randomly_shown_per_attempt
+COG,PJS,800,650,150,850,20
+ATT,PLA,800,500,300,850,20
+existing SHF,SHF,0,50,0,50,20

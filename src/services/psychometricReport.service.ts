@@ -193,6 +193,32 @@ function getReportCopy(
   }
 
 
+  if (
+    type ===
+    "SENIOR_LEADERSHIP_PERSONALITY"
+  ) {
+    return {
+      reportTitle:
+        "Senior Leadership Personality Assessment",
+
+      assessmentName:
+        "Anandam Senior Leadership Personality Test",
+
+      subtitle:
+        "Review your responses across strategic judgement, leadership influence, crew dynamics, resilience, adaptability and integrity.",
+
+      insightTitle:
+        "Your Senior Leadership Assessment",
+
+      dimensionTitle:
+        "Assessment Sections",
+
+      dimensionSubtitle:
+        "This draft assessment currently reports responses without validated scoring cut-offs.",
+    };
+  }
+
+
   return {
     reportTitle:
       "Maritime Human Performance Analysis",

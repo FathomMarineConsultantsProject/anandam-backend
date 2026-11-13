@@ -98,6 +98,7 @@ enum PsychometricTestType {
   BIG_FIVE
   PERSONALITY_16PF
   MOTIVATION_VALUES
+  SENIOR_LEADERSHIP_PERSONALITY
 }
 
 enum PsychometricQuestionType {
@@ -116,6 +117,9 @@ enum PsychometricSectionCode {
   PJS
   PLA
   SHF
+  S1
+  S2
+  S3
 }
 
 // USERS
@@ -1529,6 +1533,9 @@ model PsychometricTest {
   type PsychometricTestType @unique
 
   firstAttemptFree Boolean @default(true)
+
+  // Used when firstAttemptFree = false.
+  firstAttemptTokenCost Int @default(0)
 
   repeatTokenCost Int @default(0)
 

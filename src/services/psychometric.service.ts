@@ -253,6 +253,45 @@ function shuffle<T>(
 const PROFILE_QUESTIONS_PER_ATTEMPT =
   60;
 
+function isSectionedAssessment(
+  type: PsychometricTestType
+) {
+  return (
+    type ===
+      PsychometricTestType.MARITIME_HUMAN_PERFORMANCE ||
+    type ===
+      PsychometricTestType.SENIOR_LEADERSHIP_PERSONALITY
+  );
+}
+
+
+function getAttemptTokenCost(
+  test: {
+    firstAttemptFree: boolean;
+    firstAttemptTokenCost: number;
+    repeatTokenCost: number;
+  },
+  previousCount: number
+) {
+  if (
+    previousCount ===
+    0
+  ) {
+    return test.firstAttemptFree
+      ? 0
+      : Number(
+          test.firstAttemptTokenCost ||
+          0
+        );
+  }
+
+  return Number(
+    test.repeatTokenCost ||
+    0
+  );
+}
+
+
 
 const PROFILE_TRAITS_BY_TEST:
   Partial<
@@ -931,6 +970,136 @@ async function selectMaritimeQuestions(
 }
 
 
+async function selectSeniorLeadershipQuestions(
+  tx: Prisma.TransactionClient,
+  testId: string,
+  userId: string
+) {
+  const sections =
+    await tx.psychometricSection
+      .findMany({
+        where: {
+          testId,
+        },
+        orderBy: {
+          sortOrder:
+            "asc",
+        },
+      });
+
+  const selectedResult: Array<{
+    questionId: string;
+    sectionCode: PsychometricSectionCode;
+    questionOrder: number;
+  }> = [];
+
+  let globalOrder =
+    1;
+
+  for (
+    const section
+    of sections
+  ) {
+    const questions =
+      await tx.psychometricQuestion
+        .findMany({
+          where: {
+            testId,
+            sectionId:
+              section.id,
+            isActive:
+              true,
+            questionType:
+              PsychometricQuestionType.LIKERT_5,
+          },
+        });
+
+    if (
+      questions.length <
+      section.questionsPerAttempt
+    ) {
+      throw new PsychometricError(
+        `Not enough active questions for ${section.code}. Need ${section.questionsPerAttempt}, found ${questions.length}.`,
+        500,
+        "SENIOR_LEADERSHIP_POOL_TOO_SMALL"
+      );
+    }
+
+    const previouslyAnswered =
+      await tx.psychometricAttemptQuestion
+        .findMany({
+          where: {
+            sectionCode:
+              section.code,
+            likertValue: {
+              not:
+                null,
+            },
+            attempt: {
+              userId,
+              testId,
+            },
+          },
+          select: {
+            questionId:
+              true,
+          },
+        });
+
+    const usedIds =
+      new Set(
+        previouslyAnswered.map(
+          (item) =>
+            item.questionId
+        )
+      );
+
+    const unseen =
+      questions.filter(
+        (question) =>
+          !usedIds.has(
+            question.id
+          )
+      );
+
+    const pool =
+      unseen.length >=
+      section.questionsPerAttempt
+        ? unseen
+        : questions;
+
+    const selected =
+      shuffle(
+        pool
+      ).slice(
+        0,
+        section.questionsPerAttempt
+      );
+
+    for (
+      const question
+      of shuffle(
+        selected
+      )
+    ) {
+      selectedResult.push({
+        questionId:
+          question.id,
+        sectionCode:
+          section.code,
+        questionOrder:
+          globalOrder,
+      });
+
+      globalOrder +=
+        1;
+    }
+  }
+
+  return selectedResult;
+}
+
+
 async function finishMaritimeAttempt(
   tx: Prisma.TransactionClient,
   attemptId: string
@@ -1098,14 +1267,20 @@ export async function listPsychometricTests(
 
           const nextAttemptFree =
             test.firstAttemptFree &&
-            completedCount ===
+            testAttempts.length ===
             0;
+
+
+          const nextAttemptTokenCost =
+            getAttemptTokenCost(
+              test,
+              testAttempts.length
+            );
 
 
           const paymentRequired =
             !activeAttempt &&
-            !nextAttemptFree &&
-            test.repeatTokenCost >
+            nextAttemptTokenCost >
             0;
 
 
@@ -1127,6 +1302,9 @@ export async function listPsychometricTests(
 
             firstAttemptFree:
               test.firstAttemptFree,
+
+            firstAttemptTokenCost:
+              test.firstAttemptTokenCost,
 
             repeatTokenCost:
               test.repeatTokenCost,
@@ -1154,19 +1332,20 @@ export async function listPsychometricTests(
 
             requiredTokens:
               paymentRequired
-                ? test.repeatTokenCost
+                ? nextAttemptTokenCost
                 : 0,
 
             hasEnoughTokens:
               !paymentRequired ||
               walletBalance >=
-              test.repeatTokenCost,
+              nextAttemptTokenCost,
 
             walletBalance,
 
             questionCount:
-              test.type ===
-              PsychometricTestType.MARITIME_HUMAN_PERFORMANCE
+              isSectionedAssessment(
+                test.type
+              )
                 ? test.sections.reduce(
                     (
                       total,
@@ -1196,6 +1375,9 @@ export async function listPsychometricTests(
 
               nextAttemptFree,
 
+              firstAttemptTokenCost:
+                test.firstAttemptTokenCost,
+
               repeatTokenCost:
                 test.repeatTokenCost,
 
@@ -1203,7 +1385,7 @@ export async function listPsychometricTests(
 
               requiredTokens:
                 paymentRequired
-                  ? test.repeatTokenCost
+                  ? nextAttemptTokenCost
                   : 0,
 
               walletBalance,
@@ -1211,7 +1393,7 @@ export async function listPsychometricTests(
               hasEnoughTokens:
                 !paymentRequired ||
                 walletBalance >=
-                test.repeatTokenCost,
+                nextAttemptTokenCost,
 
               activeAttemptId:
                 activeAttempt?.id ||
@@ -1331,14 +1513,20 @@ export async function getPsychometricTest(
 
   const nextAttemptFree =
     test.firstAttemptFree &&
-    completedAttemptCount ===
+    attempts.length ===
     0;
+
+
+  const nextAttemptTokenCost =
+    getAttemptTokenCost(
+      test,
+      attempts.length
+    );
 
 
   const paymentRequired =
     !activeAttempt &&
-    !nextAttemptFree &&
-    test.repeatTokenCost >
+    nextAttemptTokenCost >
     0;
 
 
@@ -1360,6 +1548,9 @@ export async function getPsychometricTest(
 
     firstAttemptFree:
       test.firstAttemptFree,
+
+    firstAttemptTokenCost:
+      test.firstAttemptTokenCost,
 
     repeatTokenCost:
       test.repeatTokenCost,
@@ -1386,19 +1577,20 @@ export async function getPsychometricTest(
 
     requiredTokens:
       paymentRequired
-        ? test.repeatTokenCost
+        ? nextAttemptTokenCost
         : 0,
 
     hasEnoughTokens:
       !paymentRequired ||
       walletBalance >=
-      test.repeatTokenCost,
+      nextAttemptTokenCost,
 
     walletBalance,
 
     questionCount:
-      test.type ===
-      PsychometricTestType.MARITIME_HUMAN_PERFORMANCE
+      isSectionedAssessment(
+        test.type
+      )
         ? test.sections.reduce(
             (
               total,
@@ -1426,6 +1618,9 @@ export async function getPsychometricTest(
 
       nextAttemptFree,
 
+      firstAttemptTokenCost:
+        test.firstAttemptTokenCost,
+
       repeatTokenCost:
         test.repeatTokenCost,
 
@@ -1433,7 +1628,7 @@ export async function getPsychometricTest(
 
       requiredTokens:
         paymentRequired
-          ? test.repeatTokenCost
+          ? nextAttemptTokenCost
           : 0,
 
       walletBalance,
@@ -1441,7 +1636,7 @@ export async function getPsychometricTest(
       hasEnoughTokens:
         !paymentRequired ||
         walletBalance >=
-        test.repeatTokenCost,
+        nextAttemptTokenCost,
 
       activeAttemptId:
         activeAttempt?.id ||
@@ -1575,12 +1770,10 @@ export async function startPsychometricAttempt(
 
 
         const tokenCost =
-          freeAttempt
-            ? 0
-            : Number(
-                test.repeatTokenCost ||
-                  0
-              );
+          getAttemptTokenCost(
+            test,
+            previousCount
+          );
 
 
         // -----------------------------------------------
@@ -1793,6 +1986,57 @@ export async function startPsychometricAttempt(
               ),
           });
         }
+
+        // =================================================
+        // SENIOR LEADERSHIP PERSONALITY
+        // =================================================
+
+        else if (
+          test.type ===
+          PsychometricTestType.SENIOR_LEADERSHIP_PERSONALITY
+        ) {
+          const selected =
+            await selectSeniorLeadershipQuestions(
+              tx,
+              test.id,
+              userId
+            );
+
+
+          await tx.psychometricAttemptQuestion.createMany({
+            data:
+              selected.map(
+                (item) => ({
+                  attemptId:
+                    created.id,
+
+                  questionId:
+                    item.questionId,
+
+                  sectionCode:
+                    item.sectionCode,
+
+                  questionOrder:
+                    item.questionOrder,
+                })
+              ),
+          });
+
+
+          await tx.psychometricAttemptSection.createMany({
+            data:
+              test.sections.map(
+                (section) => ({
+                  attemptId:
+                    created.id,
+
+                  sectionId:
+                    section.id,
+                })
+              ),
+          });
+        }
+
 
         // =================================================
         // PERSONALITY / BEHAVIOURAL / MOTIVATION
@@ -2156,11 +2400,12 @@ export async function startPsychometricSection(
 
 
   if (
-    attempt.test.type !==
-    PsychometricTestType.MARITIME_HUMAN_PERFORMANCE
+    !isSectionedAssessment(
+      attempt.test.type
+    )
   ) {
     throw new PsychometricError(
-      "This assessment does not use timed sections.",
+      "This assessment does not use sections.",
       400,
       "INVALID_ASSESSMENT_TYPE"
     );
@@ -2197,20 +2442,25 @@ export async function startPsychometricSection(
   }
 
 
-  for (
-    let index = 0;
-    index < currentIndex;
-    index += 1
+  if (
+    attempt.test.type ===
+    PsychometricTestType.MARITIME_HUMAN_PERFORMANCE
   ) {
-    if (
-      !ordered[index]
-        .submittedAt
+    for (
+      let index = 0;
+      index < currentIndex;
+      index += 1
     ) {
-      throw new PsychometricError(
-        `Complete ${ordered[index].section.title} before starting this section.`,
-        409,
-        "PREVIOUS_SECTION_NOT_COMPLETED"
-      );
+      if (
+        !ordered[index]
+          .submittedAt
+      ) {
+        throw new PsychometricError(
+          `Complete ${ordered[index].section.title} before starting this section.`,
+          409,
+          "PREVIOUS_SECTION_NOT_COMPLETED"
+        );
+      }
     }
   }
 
@@ -2222,8 +2472,12 @@ export async function startPsychometricSection(
 
 
   if (
-    current.submittedAt ||
-    current.lockedAt
+    attempt.test.type ===
+      PsychometricTestType.MARITIME_HUMAN_PERFORMANCE &&
+    (
+      current.submittedAt ||
+      current.lockedAt
+    )
   ) {
     throw new PsychometricError(
       "This section has already been submitted and is locked.",
@@ -2245,13 +2499,16 @@ export async function startPsychometricSection(
       new Date();
 
     expiresAt =
-      new Date(
-        startedAt.getTime() +
-        current.section
-          .durationMinutes *
-        60 *
-        1000
-      );
+      attempt.test.type ===
+        PsychometricTestType.MARITIME_HUMAN_PERFORMANCE
+        ? new Date(
+            startedAt.getTime() +
+            current.section
+              .durationMinutes *
+            60 *
+            1000
+          )
+        : null;
 
 
     await prisma
@@ -2703,6 +2960,115 @@ export async function submitPsychometricSection(
           404
         );
       }
+
+      if (
+        attempt.test.type ===
+        PsychometricTestType.SENIOR_LEADERSHIP_PERSONALITY
+      ) {
+        const section =
+          attempt.sections.find(
+            (item) =>
+              item.section.code ===
+              sectionCode
+          );
+
+        if (!section) {
+          throw new PsychometricError(
+            "Section not found.",
+            404
+          );
+        }
+
+        const sectionQuestions =
+          attempt.questions.filter(
+            (question) =>
+              question.sectionCode ===
+              sectionCode
+          );
+
+        const unanswered =
+          sectionQuestions.filter(
+            (question) =>
+              question.likertValue ===
+              null
+          );
+
+        if (
+          unanswered.length >
+          0
+        ) {
+          throw new PsychometricError(
+            `Please answer all questions in this section before continuing. ${unanswered.length} question${unanswered.length === 1 ? "" : "s"} remaining.`,
+            400,
+            "INCOMPLETE_SECTION",
+            {
+              unansweredCount:
+                unanswered.length,
+            }
+          );
+        }
+
+        const now =
+          new Date();
+
+        await tx.psychometricAttemptSection
+          .update({
+            where: {
+              id:
+                section.id,
+            },
+            data: {
+              startedAt:
+                section.startedAt ||
+                now,
+              submittedAt:
+                now,
+              lockedAt:
+                null,
+              score:
+                null,
+              maxScore:
+                null,
+            },
+          });
+
+        const orderedSections =
+          [...attempt.sections]
+            .sort(
+              (
+                a,
+                b
+              ) =>
+                a.section.sortOrder -
+                b.section.sortOrder
+            );
+
+        const currentIndex =
+          orderedSections.findIndex(
+            (item) =>
+              item.section.code ===
+              sectionCode
+          );
+
+        return {
+          success:
+            true,
+          sectionCode,
+          locked:
+            false,
+          completed:
+            false,
+          nextSection:
+            currentIndex >= 0 &&
+            currentIndex <
+              orderedSections.length - 1
+              ? orderedSections[
+                  currentIndex + 1
+                ].section.code
+              : null,
+        };
+      }
+
 
       if (
         attempt.test.type !==

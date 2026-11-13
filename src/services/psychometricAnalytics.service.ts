@@ -542,12 +542,23 @@ function getResultKind(
   testType:
     PsychometricTestType
 ) {
-  return (
+  if (
     testType ===
     PsychometricTestType.MARITIME_HUMAN_PERFORMANCE
-      ? "MARITIME_SCORED"
-      : "PROFILE_ANALYTICS"
-  );
+  ) {
+    return "MARITIME_SCORED";
+  }
+
+
+  if (
+    testType ===
+    PsychometricTestType.SENIOR_LEADERSHIP_PERSONALITY
+  ) {
+    return "SENIOR_LEADERSHIP_PERSONALITY";
+  }
+
+
+  return "PROFILE_ANALYTICS";
 }
 
 
@@ -1574,6 +1585,140 @@ export async function getPsychometricAnalysis(
       answerKeyAvailable:
         answersUnlocked,
 
+      responses,
+    };
+  }
+
+
+  /* ====================================================
+     SENIOR LEADERSHIP PERSONALITY
+
+     Important:
+     The supplied 300-item bank states that no validated
+     scoring key, weighting model or cut-off has yet been
+     established. We therefore return completion/response
+     analytics without inventing a pass/fail or personality
+     score.
+     ==================================================== */
+
+  if (
+    attempt.test.type ===
+    PsychometricTestType.SENIOR_LEADERSHIP_PERSONALITY
+  ) {
+    const orderedSections =
+      [...attempt.sections]
+        .sort(
+          (
+            left,
+            right
+          ) =>
+            left.section.sortOrder -
+            right.section.sortOrder
+        );
+
+    const sections =
+      orderedSections.map(
+        (attemptSection) => {
+          const items =
+            attempt.questions.filter(
+              (item) =>
+                item.sectionCode ===
+                attemptSection.section.code
+            );
+
+          const answered =
+            items.filter(
+              (item) =>
+                item.likertValue !==
+                null
+            ).length;
+
+          return {
+            code:
+              attemptSection.section.code,
+            title:
+              attemptSection.section.title,
+            answered,
+            total:
+              items.length,
+            completed:
+              answered ===
+              items.length,
+          };
+        }
+      );
+
+    const responses =
+      attempt.questions.map(
+        (
+          item,
+          index
+        ) => ({
+          questionNumber:
+            index + 1,
+          attemptQuestionId:
+            item.id,
+          questionId:
+            item.questionId,
+          itemCode:
+            item.question.itemCode,
+          sectionCode:
+            item.sectionCode,
+          sectionTitle:
+            item.question.domain,
+          questionText:
+            item.question.questionText,
+          rawValue:
+            item.likertValue,
+          response:
+            item.likertValue !==
+            null
+              ? getLikertResponseLabel(
+                  item.question.competency,
+                  Number(
+                    item.likertValue
+                  )
+                )
+              : null,
+          reverseScored:
+            false,
+        })
+      );
+
+    const answered =
+      responses.filter(
+        (item) =>
+          item.rawValue !==
+          null
+      ).length;
+
+    return {
+      ...common,
+      resultKind:
+        "SENIOR_LEADERSHIP_PERSONALITY",
+      answered,
+      unanswered:
+        responses.length -
+        answered,
+      sections,
+      score:
+        null,
+      dimensions:
+        [],
+      analysis: {
+        headline:
+          "Senior Leadership Personality Assessment completed.",
+        summary:
+          "Your responses have been recorded across the three senior leadership sections.",
+        scoringStatus:
+          "VALIDATION_REQUIRED",
+        scoringNotice:
+          "No validated scoring key, weighting model or decision cut-off has been applied to this assessment.",
+      },
+      answersUnlocked:
+        true,
+      answerKeyAvailable:
+        false,
       responses,
     };
   }

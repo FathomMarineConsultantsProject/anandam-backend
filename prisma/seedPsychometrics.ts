@@ -14,6 +14,9 @@ import maritimeQuestionBank
 import personalPsychometricQuestionBank
   from "./data/personalPsychometricQuestionBank.json";
 
+import seniorLeadershipQuestionBank
+  from "./data/seniorLeadershipQuestionBank.json";
+
 const prisma =
   new PrismaClient();
 
@@ -30,6 +33,8 @@ const TESTS = [
       PsychometricTestType.MARITIME_HUMAN_PERFORMANCE,
     firstAttemptFree:
       true,
+    firstAttemptTokenCost:
+      0,
     repeatTokenCost:
       5,
     sortOrder:
@@ -46,6 +51,8 @@ const TESTS = [
       PsychometricTestType.BIG_FIVE,
     firstAttemptFree:
       true,
+    firstAttemptTokenCost:
+      0,
     repeatTokenCost:
       3,
     sortOrder:
@@ -62,6 +69,8 @@ const TESTS = [
       PsychometricTestType.PERSONALITY_16PF,
     firstAttemptFree:
       true,
+    firstAttemptTokenCost:
+      0,
     repeatTokenCost:
       3,
     sortOrder:
@@ -78,10 +87,29 @@ const TESTS = [
       PsychometricTestType.MOTIVATION_VALUES,
     firstAttemptFree:
       true,
+    firstAttemptTokenCost:
+      0,
     repeatTokenCost:
       3,
     sortOrder:
       4,
+  },  {
+    code:
+      "anandam-senior-leadership-personality",
+    title:
+      "Anandam Senior Leadership Personality Test",
+    description:
+      "A structured senior maritime leadership personality assessment exploring strategic judgement, leadership influence, crew dynamics, resilience, adaptability and integrity.",
+    type:
+      PsychometricTestType.SENIOR_LEADERSHIP_PERSONALITY,
+    firstAttemptFree:
+      false,
+    firstAttemptTokenCost:
+      1,
+    repeatTokenCost:
+      10,
+    sortOrder:
+      5,
   },
 ];
 
@@ -416,6 +444,8 @@ async function seedTests() {
               data.description,
             firstAttemptFree:
               data.firstAttemptFree,
+            firstAttemptTokenCost:
+              data.firstAttemptTokenCost,
             repeatTokenCost:
               data.repeatTokenCost,
             isActive:
@@ -633,6 +663,226 @@ async function seedMaritimeQuestions(
             true,
         },
       });
+  }
+}
+
+
+type SeniorLeadershipQuestion = {
+  question_id: string;
+  section_code: "S1" | "S2" | "S3";
+  section_name: string;
+  bank_index: number;
+  default_set: number;
+  item_type: string;
+  statement: string;
+  status: string;
+};
+
+
+type SeniorLeadershipBank = {
+  title: string;
+  response_scale: string[];
+  notice: string;
+  sections: Array<{
+    code: "S1" | "S2" | "S3";
+    name: string;
+    questions: SeniorLeadershipQuestion[];
+  }>;
+};
+
+
+async function seedSeniorLeadershipSections(
+  testId: string
+) {
+  const sections = [
+    {
+      code:
+        PsychometricSectionCode.S1,
+      title:
+        "Strategic Judgment & Accountability",
+      durationMinutes:
+        0,
+      questionsPerAttempt:
+        20,
+      sortOrder:
+        1,
+    },
+    {
+      code:
+        PsychometricSectionCode.S2,
+      title:
+        "Leadership Influence & Crew Dynamics",
+      durationMinutes:
+        0,
+      questionsPerAttempt:
+        20,
+      sortOrder:
+        2,
+    },
+    {
+      code:
+        PsychometricSectionCode.S3,
+      title:
+        "Resilience, Adaptability & Integrity",
+      durationMinutes:
+        0,
+      questionsPerAttempt:
+        20,
+      sortOrder:
+        3,
+    },
+  ];
+
+  for (
+    const section
+    of sections
+  ) {
+    await prisma.psychometricSection
+      .upsert({
+        where: {
+          testId_code: {
+            testId,
+            code:
+              section.code,
+          },
+        },
+        update: {
+          title:
+            section.title,
+          durationMinutes:
+            section.durationMinutes,
+          questionsPerAttempt:
+            section.questionsPerAttempt,
+          sortOrder:
+            section.sortOrder,
+          isLockedAfterSubmit:
+            false,
+        },
+        create: {
+          testId,
+          ...section,
+          isLockedAfterSubmit:
+            false,
+        },
+      });
+  }
+}
+
+
+async function seedSeniorLeadershipQuestions(
+  testId: string
+) {
+  const sections =
+    await prisma.psychometricSection
+      .findMany({
+        where: {
+          testId,
+        },
+      });
+
+  const sectionMap =
+    new Map(
+      sections.map(
+        (section) => [
+          section.code,
+          section.id,
+        ]
+      )
+    );
+
+  const bank =
+    seniorLeadershipQuestionBank as
+      SeniorLeadershipBank;
+
+  let globalOrder =
+    1;
+
+  for (
+    const bankSection
+    of bank.sections
+  ) {
+    const sectionCode =
+      bankSection.code as
+        PsychometricSectionCode;
+
+    const sectionId =
+      sectionMap.get(
+        sectionCode
+      );
+
+    if (!sectionId) {
+      throw new Error(
+        `Missing Senior Leadership section ${bankSection.code}.`
+      );
+    }
+
+    for (
+      const question
+      of bankSection.questions
+    ) {
+      await prisma.psychometricQuestion
+        .upsert({
+          where: {
+            itemCode:
+              question.question_id,
+          },
+          update: {
+            testId,
+            sectionId,
+            domain:
+              question.section_name,
+            competency:
+              "Likert 1-5",
+            questionText:
+              question.statement,
+            questionType:
+              PsychometricQuestionType.LIKERT_5,
+            optionA:
+              null,
+            optionB:
+              null,
+            optionC:
+              null,
+            optionD:
+              null,
+            correctOption:
+              null,
+            reverseScored:
+              false,
+            traitKey:
+              null,
+            sortOrder:
+              globalOrder,
+            isActive:
+              true,
+          },
+          create: {
+            testId,
+            sectionId,
+            itemCode:
+              question.question_id,
+            domain:
+              question.section_name,
+            competency:
+              "Likert 1-5",
+            questionText:
+              question.statement,
+            questionType:
+              PsychometricQuestionType.LIKERT_5,
+            reverseScored:
+              false,
+            traitKey:
+              null,
+            sortOrder:
+              globalOrder,
+            isActive:
+              true,
+          },
+        });
+
+      globalOrder +=
+        1;
+    }
   }
 }
 
@@ -1009,11 +1259,17 @@ async function main() {
       PsychometricTestType.MOTIVATION_VALUES
     );
 
+  const seniorLeadershipTestId =
+    testIds.get(
+      PsychometricTestType.SENIOR_LEADERSHIP_PERSONALITY
+    );
+
   if (
     !maritimeTestId ||
     !bigFiveTestId ||
     !behaviouralTestId ||
-    !motivationTestId
+    !motivationTestId ||
+    !seniorLeadershipTestId
   ) {
     throw new Error(
       "Could not create all psychometric tests."
@@ -1026,6 +1282,14 @@ async function main() {
 
   await seedMaritimeQuestions(
     maritimeTestId
+  );
+
+  await seedSeniorLeadershipSections(
+    seniorLeadershipTestId
+  );
+
+  await seedSeniorLeadershipQuestions(
+    seniorLeadershipTestId
   );
 
   await seedBigFive(
@@ -1071,11 +1335,28 @@ async function main() {
       BEHAVIOURAL.length,
     motivationQuestions:
       MOTIVATION_VALUES.length,
+    seniorLeadershipQuestions:
+      (seniorLeadershipQuestionBank as SeniorLeadershipBank)
+        .sections
+        .reduce(
+          (total, section) =>
+            total +
+            section.questions.length,
+          0
+        ),
     totalExpected:
       (maritimeQuestionBank as MaritimeQuestion[]).length +
       BIG_FIVE.length +
       BEHAVIOURAL.length +
-      MOTIVATION_VALUES.length,
+      MOTIVATION_VALUES.length +
+      (seniorLeadershipQuestionBank as SeniorLeadershipBank)
+        .sections
+        .reduce(
+          (total, section) =>
+            total +
+            section.questions.length,
+          0
+        ),
   });
 }
 

@@ -3374,9 +3374,21 @@ export async function submitPsychometricAttempt(
     );
 
 
+  /*
+    Senior Leadership intentionally remains strict because
+    its three section workflow requires all 20 questions in
+    each section before that section can be submitted.
+
+    The standard single-page profile assessments
+    (Big Five, Behavioural Patterns, Motivation & Values)
+    may be completed with unanswered items when the user
+    explicitly chooses "Continue Anyway" in the frontend.
+  */
   if (
+    attempt.test.type ===
+      PsychometricTestType.SENIOR_LEADERSHIP_PERSONALITY &&
     unanswered.length >
-    0
+      0
   ) {
     throw new PsychometricError(
       `Please answer all questions before submitting. ${unanswered.length} question${unanswered.length === 1

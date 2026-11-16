@@ -2285,58 +2285,48 @@ export async function getPsychometricAttempt(
     sections,
 
     questions:
-      disclaimerAccepted
-        ? attempt.questions.map(
-        (item) => {
-          const safeQuestion =
-            sanitizeQuestion(
-              item.question
-            );
+  disclaimerAccepted
+    ? attempt.questions.map((item) => {
+        const safeQuestion =
+          sanitizeQuestion(item.question);
 
-          return {
-            // ID of PsychometricAttemptQuestion
-            id:
-              item.id,
+        return {
+          // Put safeQuestion FIRST so it cannot overwrite
+          // the IDs below.
+          ...safeQuestion,
 
-            attemptQuestionId:
-              item.id,
+          // ID of PsychometricAttemptQuestion
+          // This is the ID used for saving answers.
+          id: item.id,
 
-            // ID of original PsychometricQuestion
-            questionId:
-              item.questionId,
+          attemptQuestionId:
+            item.id,
 
-            questionOrder:
-              item.questionOrder,
+          // Original PsychometricQuestion ID
+          questionId:
+            item.questionId,
 
-            sectionCode:
-              item.sectionCode,
+          questionOrder:
+            item.questionOrder,
 
-            selectedOption:
-              item.selectedOption,
+          sectionCode:
+            item.sectionCode,
 
-            likertValue:
-              item.likertValue,
+          selectedOption:
+            item.selectedOption,
 
-            answeredAt:
-              item.answeredAt,
+          likertValue:
+            item.likertValue,
 
-            // -------------------------------
-            // FLAT FORMAT
-            // -------------------------------
+          answeredAt:
+            item.answeredAt,
 
-            ...safeQuestion,
-
-            // -------------------------------
-            // NESTED FORMAT
-            // backwards compatibility
-            // -------------------------------
-
-            question:
-              safeQuestion,
-          };
-        }
-      )
-        : [],
+          // Nested format for backwards compatibility.
+          question:
+            safeQuestion,
+        };
+      })
+    : [],
   };
 }
 
@@ -2528,51 +2518,48 @@ export async function startPsychometricSection(
 
 
   const sectionQuestions =
-    attempt.questions
-      .filter(
-        (item) =>
-          item.sectionCode ===
-          sectionCode
-      )
-      .map(
-        (item) => {
-          const safeQuestion =
-            sanitizeQuestion(
-              item.question
-            );
+  attempt.questions
+    .filter(
+      (item) =>
+        item.sectionCode === sectionCode
+    )
+    .map((item) => {
+      const safeQuestion =
+        sanitizeQuestion(item.question);
 
-          return {
-            id:
-              item.id,
+      return {
+        ...safeQuestion,
 
-            attemptQuestionId:
-              item.id,
+        // Always expose the attempt-question ID
+        // as the primary ID.
+        id:
+          item.id,
 
-            questionId:
-              item.questionId,
+        attemptQuestionId:
+          item.id,
 
-            questionOrder:
-              item.questionOrder,
+        questionId:
+          item.questionId,
 
-            sectionCode:
-              item.sectionCode,
+        questionOrder:
+          item.questionOrder,
 
-            selectedOption:
-              item.selectedOption,
+        sectionCode:
+          item.sectionCode,
 
-            likertValue:
-              item.likertValue,
+        selectedOption:
+          item.selectedOption,
 
-            answeredAt:
-              item.answeredAt,
+        likertValue:
+          item.likertValue,
 
-            ...safeQuestion,
+        answeredAt:
+          item.answeredAt,
 
-            question:
-              safeQuestion,
-          };
-        }
-      );
+        question:
+          safeQuestion,
+      };
+    });
 
 
   if (
@@ -2725,21 +2712,41 @@ export async function savePsychometricAnswers(
         of answers
       ) {
 
-        const attemptQuestion =
-          (
-            answer.attemptQuestionId
-              ? questionMapByAttemptQuestionId.get(
-                answer.attemptQuestionId
-              )
-              : undefined
-          ) ||
-          (
-            answer.questionId
-              ? questionMapByQuestionId.get(
-                answer.questionId
-              )
-              : undefined
-          );
+        const incomingAttemptQuestionId =
+  String(
+    answer.attemptQuestionId || ""
+  ).trim();
+
+const incomingQuestionId =
+  String(
+    answer.questionId || ""
+  ).trim();
+
+const attemptQuestion =
+  (
+    incomingAttemptQuestionId
+      ? questionMapByAttemptQuestionId.get(
+          incomingAttemptQuestionId
+        )
+      : undefined
+  ) ||
+  (
+    incomingQuestionId
+      ? questionMapByQuestionId.get(
+          incomingQuestionId
+        )
+      : undefined
+  ) ||
+  (
+    // Compatibility fallback:
+    // some older FE builds used the original
+    // question ID as attemptQuestionId.
+    incomingAttemptQuestionId
+      ? questionMapByQuestionId.get(
+          incomingAttemptQuestionId
+        )
+      : undefined
+  );
 
 
         if (!attemptQuestion) {

@@ -2861,21 +2861,50 @@ const attemptQuestion =
             );
           }
 
-          await tx.psychometricAttemptQuestion
-            .update({
-              where: {
-                id:
+          const updated =
+            await tx.psychometricAttemptQuestion
+              .updateMany({
+                where: {
+                  id:
+                    attemptQuestion.id,
+
+                  attemptId:
+                    attempt.id,
+                },
+
+                data: {
+                  selectedOption:
+                    selected,
+
+                  likertValue:
+                    null,
+
+                  answeredAt:
+                    new Date(),
+                },
+              });
+
+
+          if (
+            updated.count !==
+            1
+          ) {
+            throw new PsychometricError(
+              "The selected assessment question could not be saved.",
+              409,
+              "ATTEMPT_QUESTION_UPDATE_FAILED",
+              {
+                attemptId:
+                  attempt.id,
+
+                attemptQuestionId:
                   attemptQuestion.id,
-              },
-              data: {
-                selectedOption:
-                  selected,
-                likertValue:
-                  null,
-                answeredAt:
-                  new Date(),
-              },
-            });
+
+                questionId:
+                  attemptQuestion.questionId,
+              }
+            );
+          }
         } else {
           const value =
             Number(
@@ -2894,21 +2923,50 @@ const attemptQuestion =
             );
           }
 
-          await tx.psychometricAttemptQuestion
-            .update({
-              where: {
-                id:
+          const updated =
+            await tx.psychometricAttemptQuestion
+              .updateMany({
+                where: {
+                  id:
+                    attemptQuestion.id,
+
+                  attemptId:
+                    attempt.id,
+                },
+
+                data: {
+                  likertValue:
+                    value,
+
+                  selectedOption:
+                    null,
+
+                  answeredAt:
+                    new Date(),
+                },
+              });
+
+
+          if (
+            updated.count !==
+            1
+          ) {
+            throw new PsychometricError(
+              "The selected assessment question could not be saved.",
+              409,
+              "ATTEMPT_QUESTION_UPDATE_FAILED",
+              {
+                attemptId:
+                  attempt.id,
+
+                attemptQuestionId:
                   attemptQuestion.id,
-              },
-              data: {
-                likertValue:
-                  value,
-                selectedOption:
-                  null,
-                answeredAt:
-                  new Date(),
-              },
-            });
+
+                questionId:
+                  attemptQuestion.questionId,
+              }
+            );
+          }
         }
       }
     }

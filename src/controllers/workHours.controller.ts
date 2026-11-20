@@ -16,6 +16,13 @@ const prisma = new PrismaClient();
 const BLOCKS_PER_DAY = 48;
 const MINUTES_PER_BLOCK = 30;
 
+// Work/Rest grid is defined in India Standard Time.
+// Prisma timestamps remain real UTC instants; only grid projection
+// and day-boundary calculations are shifted to IST.
+const IST_OFFSET_MINUTES = 330;
+const IST_OFFSET_MS =
+  IST_OFFSET_MINUTES * 60 * 1000;
+
 const DIRECT_EDIT_STATUSES = [
   "REST",
   "MEAL",
@@ -134,6 +141,52 @@ const addDays = (
   return result;
 };
 
+
+// ======================================================
+// IST GRID HELPERS
+// ======================================================
+// DailyWorkHours.date is kept as a logical YYYY-MM-DD value
+// stored at 00:00:00Z. The 48 grid slots, however, represent
+// 00:00-24:00 IST.
+//
+// Example:
+// 09:34 IST is stored by Prisma as 04:04Z.
+// For grid math we shift it to 09:34Z so slot calculations
+// land at 09:30 instead of 04:00.
+
+const toIstGridTime = (
+  instant: Date
+): Date =>
+  new Date(
+    instant.getTime() + IST_OFFSET_MS
+  );
+
+
+const fromIstGridTime = (
+  gridTime: Date
+): Date =>
+  new Date(
+    gridTime.getTime() - IST_OFFSET_MS
+  );
+
+
+const getIstDayBounds = (
+  dayStart: Date
+) => {
+  const gridDayEnd =
+    addDays(dayStart, 1);
+
+  return {
+    actualStart:
+      fromIstGridTime(dayStart),
+
+    actualEnd:
+      fromIstGridTime(
+        gridDayEnd
+      ),
+  };
+};
+
 // ======================================================
 // AUTO-FINALIZE COMPLETED DAYS
 // ======================================================
@@ -149,12 +202,21 @@ const isCompletedDay = (
   dayStart: Date,
   now: Date = new Date()
 ): boolean => {
-  const dayEnd = addDays(
-    dayStart,
-    1
-  );
+  const dayEnd =
+    addDays(
+      dayStart,
+      1
+    );
 
-  return dayEnd <= now;
+  // dayStart/dayEnd are logical IST grid dates encoded at Z.
+  // Convert the end of the IST day back to the real UTC instant
+  // before comparing with the current time.
+  const actualDayEnd =
+    fromIstGridTime(
+      dayEnd
+    );
+
+  return actualDayEnd <= now;
 };
 
 
@@ -202,7 +264,7 @@ const getSlotTimeRange = (
   dayStart: Date,
   slotIndex: number
 ) => {
-  const start = new Date(
+  const gridStart = new Date(
     dayStart.getTime() +
     slotIndex *
     MINUTES_PER_BLOCK *
@@ -210,16 +272,26 @@ const getSlotTimeRange = (
     1000
   );
 
-  const end = new Date(
-    start.getTime() +
+  const gridEnd = new Date(
+    gridStart.getTime() +
     MINUTES_PER_BLOCK *
     60 *
     1000
   );
 
+  // WorkSession timestamps are real UTC instants, so convert
+  // the logical IST slot boundaries back to real UTC instants
+  // before performing overlap checks.
   return {
-    start,
-    end,
+    start:
+      fromIstGridTime(
+        gridStart
+      ),
+
+    end:
+      fromIstGridTime(
+        gridEnd
+      ),
   };
 };
 
@@ -309,12 +381,26 @@ const saveWorkIntervalToGrid =
     startedAt: Date,
     endedAt: Date
   ) => {
+    // Convert real UTC instants into the logical IST grid
+    // coordinate system before calculating half-hour slots.
+    const gridStartedAt =
+      toIstGridTime(
+        startedAt
+      );
+
+    const gridEndedAt =
+      toIstGridTime(
+        endedAt
+      );
+
     let dayCursor =
-      getDayStart(startedAt);
+      getDayStart(
+        gridStartedAt
+      );
 
 
     while (
-      dayCursor < endedAt
+      dayCursor < gridEndedAt
     ) {
       const existing =
         await prisma.dailyWorkHours.findUnique({
@@ -337,8 +423,8 @@ const saveWorkIntervalToGrid =
         applyIntervalToBlocks(
           blocks,
           dayCursor,
-          startedAt,
-          endedAt,
+          gridStartedAt,
+          gridEndedAt,
           "WORK"
         );
 
@@ -658,8 +744,12 @@ const buildDayResponse =
     userId: string,
     dayStart: Date
   ) => {
-    const dayEnd =
-      addDays(dayStart, 1);
+    const {
+      actualStart: actualDayStart,
+      actualEnd: actualDayEnd,
+    } = getIstDayBounds(
+      dayStart
+    );
 
 
     const record =
@@ -692,7 +782,7 @@ const buildDayResponse =
           userId,
 
           startedAt: {
-            lt: dayEnd,
+            lt: actualDayEnd,
           },
 
           OR: [
@@ -702,7 +792,7 @@ const buildDayResponse =
 
             {
               endedAt: {
-                gt: dayStart,
+                gt: actualDayStart,
               },
             },
           ],
@@ -719,6 +809,8 @@ const buildDayResponse =
       even before clock-out.
     */
     const now = new Date();
+    const gridNow =
+      toIstGridTime(now);
 
     /*
       IMPORTANT:
@@ -744,8 +836,10 @@ const buildDayResponse =
         applyIntervalToBlocks(
           blocks,
           dayStart,
-          session.startedAt,
-          now,
+          toIstGridTime(
+            session.startedAt
+          ),
+          gridNow,
           "WORK"
         );
     }
@@ -997,11 +1091,12 @@ export const updateMyDaySlots =
       }
 
 
-      const dayEnd =
-        addDays(
-          date,
-          1
-        );
+      const {
+        actualStart: actualDayStart,
+        actualEnd: actualDayEnd,
+      } = getIstDayBounds(
+        date
+      );
 
 
       /*
@@ -1014,7 +1109,7 @@ export const updateMyDaySlots =
             userId,
 
             startedAt: {
-              lt: dayEnd,
+              lt: actualDayEnd,
             },
 
             OR: [
@@ -1024,7 +1119,7 @@ export const updateMyDaySlots =
 
               {
                 endedAt: {
-                  gt: date,
+                  gt: actualDayStart,
                 },
               },
             ],

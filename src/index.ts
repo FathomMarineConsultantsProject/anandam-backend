@@ -89,6 +89,9 @@ import practitionerRoutes
 import practitionerOnboardingRoutes
   from "./routes/practitionerOnboarding.route";
 
+import resortOwnerRoutes from "./routes/resortOwner.route";
+import resortPublicRoutes from "./routes/resortPublic.route";
+
 
 // ======================================================
 // NOTIFICATIONS / VIDEO
@@ -183,6 +186,13 @@ app.use(
   siteAccessRoutes
 );
 
+
+// ======================================================
+// RESORT OWNERS: free onboarding and management
+// Public listing discovery is separate from paid practitioner marketplace.
+// ======================================================
+app.use("/api/resort-owner", resortOwnerRoutes);
+app.use("/api/resorts", resortPublicRoutes);
 
 // ======================================================
 // PROFILE

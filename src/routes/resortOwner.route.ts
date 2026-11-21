@@ -1,0 +1,25 @@
+import { Router } from "express";
+import { UserRole } from "@prisma/client";
+import { authenticateToken } from "../middleware/auth.middleware";
+import { requireRole } from "../middleware/role.middleware";
+import { createProperty, listMyProperties, getMyProperty, getResortCatalog, updatePropertySection, createRoom, updateRoom, deleteRoom, reviewProperty, publishProperty, changePropertyVisibility } from "../controllers/resortOwner.controller";
+import { presignResortImage, confirmResortImage, deleteResortImage } from "../controllers/resortImage.controller";
+
+const router = Router();
+router.use(authenticateToken);
+router.use(requireRole(UserRole.RESORT_OWNER));
+router.get("/catalog", getResortCatalog);
+router.get("/properties", listMyProperties);
+router.post("/properties", createProperty);
+router.get("/properties/:propertyId", getMyProperty);
+router.patch("/properties/:propertyId/sections/:section", updatePropertySection);
+router.post("/properties/:propertyId/rooms", createRoom);
+router.patch("/properties/:propertyId/rooms/:roomId", updateRoom);
+router.delete("/properties/:propertyId/rooms/:roomId", deleteRoom);
+router.post("/properties/:propertyId/images/presign", presignResortImage);
+router.post("/properties/:propertyId/images/confirm", confirmResortImage);
+router.delete("/properties/:propertyId/images/:imageId", deleteResortImage);
+router.get("/properties/:propertyId/review", reviewProperty);
+router.post("/properties/:propertyId/publish", publishProperty);
+router.patch("/properties/:propertyId/visibility", changePropertyVisibility);
+export default router;

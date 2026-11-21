@@ -249,7 +249,9 @@ export const registerUser = async (
       requestedAccountType !==
         UserRole.USER &&
       requestedAccountType !==
-        UserRole.PRACTITIONER
+        UserRole.PRACTITIONER &&
+      requestedAccountType !==
+        UserRole.RESORT_OWNER
     ) {
       return res.status(400).json({
         error:
@@ -349,6 +351,12 @@ export const registerUser = async (
           }
 
 
+          if (role === UserRole.RESORT_OWNER) {
+            await tx.resortOwnerProfile.create({
+              data: { userId: user.id },
+            });
+          }
+
           return user;
         }
       );
@@ -408,6 +416,11 @@ export const registerUser = async (
               nextStep:
                 1,
             }
+          : null,
+
+      resortOnboarding:
+        newUser.role === UserRole.RESORT_OWNER
+          ? { required: true, completed: false, nextStep: 1, propertyId: null }
           : null,
     });
 
@@ -476,6 +489,19 @@ export const loginUser = async (
           onboardingCompleted: true,
           approvalStatus: true,
           isVisible: true,
+        },
+      },
+      resortOwnerProfile: {
+        select: {
+          properties: {
+            orderBy: { createdAt: "asc" },
+            select: {
+              id: true,
+              onboardingStep: true,
+              onboardingCompleted: true,
+              status: true,
+            },
+          },
         },
       },
     },
@@ -580,6 +606,21 @@ export const loginUser = async (
                   ?.id ??
                 null,
             }
+          : null,
+
+      resortOnboarding:
+        user.role === UserRole.RESORT_OWNER
+          ? (() => {
+              const properties = user.resortOwnerProfile?.properties ?? [];
+              const draft = properties.find(p => !p.onboardingCompleted);
+              return {
+                required: properties.length === 0 || Boolean(draft),
+                completed: properties.some(p => p.onboardingCompleted),
+                nextStep: draft?.onboardingStep ?? (properties.length ? 8 : 1),
+                propertyId: draft?.id ?? properties[0]?.id ?? null,
+                properties,
+              };
+            })()
           : null,
     });
 

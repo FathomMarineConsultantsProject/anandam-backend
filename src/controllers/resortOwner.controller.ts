@@ -20,7 +20,7 @@ const uniqueStrings = (v: unknown) => Array.isArray(v)
   ? [...new Set(v.filter((x): x is string => typeof x === "string").map(x => x.trim()).filter(Boolean))] : [];
 const own = (req: AuthRequest) => req.user?.userId || "";
 const slug = (name: string) => `${name.toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60) || "property"}-${randomBytes(5).toString("hex")}`;
-const info = { rooms: { include: { beds: true, images: { orderBy: { sortOrder: "asc" as const } } }, orderBy: { createdAt: "asc" as const } }, images: { orderBy: { sortOrder: "asc" as const } } };
+const info = { rooms: { include: { beds: true, units: { orderBy: { number: "asc" as const } }, images: { orderBy: { sortOrder: "asc" as const } } }, orderBy: { createdAt: "asc" as const } }, images: { orderBy: { sortOrder: "asc" as const } } };
 
 async function ownedProperty(req: AuthRequest) {
   return prisma.resortProperty.findFirst({
@@ -98,6 +98,12 @@ export const updatePropertySection = wrap(async (req, res) => {
       data[key] = field(req.body[key]);
     }
   }
+  if (data.resortRating !== undefined && data.resortRating !== null) {
+    const rating = Number(data.resortRating);
+    if (!/^\d(?:\.\d{1,2})?$/.test(String(data.resortRating)) || !Number.isFinite(rating) || rating < 0 || rating > 5) {
+      return void res.status(400).json({ message: "Resort rating must be a number from 0 to 5, with up to two decimal places." });
+    }
+  }
   if (data.propertyType && !propertyTypes.includes(String(data.propertyType))) return void res.status(400).json({ message: "Unknown property type" });
   for (const urlField of ["websiteUrl", "googleMapsUrl"]) {
     if (data[urlField] && !validUrl(String(data[urlField]))) return void res.status(400).json({ message: `Invalid ${urlField}` });
@@ -165,6 +171,8 @@ export const updateRoom = wrap(async (req, res) => {
   const input = { ...existing, beds: existing.beds.map(b => ({ bedType: b.bedType, quantity: b.quantity })), ...req.body };
   const parsed = parseRoom(input);
   if (parsed.errors.length) return void invalid(res, parsed.errors);
+  const numbered = await prisma.resortRoomUnit.count({ where: { roomTypeId: existing.id } });
+  if (parsed.data.quantity < numbered) return void res.status(422).json({ code: "ROOM_QUANTITY_TOO_LOW", message: "Room quantity cannot be less than the number of assigned room numbers." });
   const room = await prisma.$transaction(async tx => {
     await tx.resortRoomBed.deleteMany({ where: { roomTypeId: existing.id } });
     return tx.resortRoomType.update({ where: { id: existing.id }, data: { ...parsed.data, beds: { create: parsed.beds } }, include: { beds: true, images: true } });
@@ -178,8 +186,19 @@ export const deleteRoom = wrap(async (req, res) => {
   const room = await prisma.resortRoomType.findFirst({ where: { id: String(req.params.roomId), propertyId: property.id } });
   if (!room) return void res.status(404).json({ message: "Room type not found" });
   if (property.status === ResortPropertyStatus.PUBLISHED && property.rooms.length <= 1) return void res.status(409).json({ message: "A published property must have at least one room type" });
-  // Image metadata cascades; blob cleanup handled separately as needed.
-  await prisma.resortRoomType.delete({ where: { id: room.id } });
+  // Remove unused physical room numbers before deleting the room type.
+  // Historic reservations, blocks or event allocations prevent deletion.
+  const used = await Promise.all([
+    prisma.resortReservation.count({ where: { roomTypeId: room.id } }),
+    prisma.resortEventRoomAllocation.count({ where: { roomTypeId: room.id } }),
+    prisma.resortRoomBlock.count({ where: { roomUnit: { roomTypeId: room.id } } }),
+    prisma.resortEventRoomHold.count({ where: { roomUnit: { roomTypeId: room.id } } }),
+  ]);
+  if (used.some(Boolean)) return void res.status(409).json({ code: "ROOM_IN_USE", message: "This room type has reservations, calendar blocks or retreat allocations and cannot be deleted." });
+  await prisma.$transaction(async tx => {
+    await tx.resortRoomUnit.deleteMany({ where: { roomTypeId: room.id } });
+    await tx.resortRoomType.delete({ where: { id: room.id } });
+  });
   res.json({ message: "Room type removed" });
 });
 

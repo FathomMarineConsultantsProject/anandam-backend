@@ -1819,10 +1819,15 @@ model ResortProperty {
   additionalRules   String?  @db.Text
   confirmedAccurate Boolean  @default(false)
 
-  images    ResortImage[]
-  rooms     ResortRoomType[]
-  createdAt DateTime         @default(now())
-  updatedAt DateTime         @updatedAt
+  images         ResortImage[]
+  rooms          ResortRoomType[]
+  roomUnits      ResortRoomUnit[]
+  events         ResortEvent[]
+  reservations   ResortReservation[]
+  roomBlocks     ResortRoomBlock[]
+  eventRoomHolds ResortEventRoomHold[]
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
 
   @@index([ownerId, updatedAt])
   @@index([status, publishedAt])
@@ -1830,22 +1835,25 @@ model ResortProperty {
 }
 
 model ResortRoomType {
-  id            String          @id @default(uuid())
-  propertyId    String
-  property      ResortProperty  @relation(fields: [propertyId], references: [id], onDelete: Cascade)
-  name          String
-  quantity      Int
-  maxAdults     Int
-  maxChildren   Int
-  features      String[]        @default([])
-  includedMeals String[]        @default([])
-  currency      String          @default("INR")
-  basePrice     Decimal?        @db.Decimal(12, 2)
-  description   String?         @db.Text
-  beds          ResortRoomBed[]
-  images        ResortImage[]
-  createdAt     DateTime        @default(now())
-  updatedAt     DateTime        @updatedAt
+  id               String                      @id @default(uuid())
+  propertyId       String
+  property         ResortProperty              @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  name             String
+  quantity         Int
+  maxAdults        Int
+  maxChildren      Int
+  features         String[]                    @default([])
+  includedMeals    String[]                    @default([])
+  currency         String                      @default("INR")
+  basePrice        Decimal?                    @db.Decimal(12, 2)
+  description      String?                     @db.Text
+  beds             ResortRoomBed[]
+  images           ResortImage[]
+  units            ResortRoomUnit[]
+  reservations     ResortReservation[]
+  eventAllocations ResortEventRoomAllocation[]
+  createdAt        DateTime                    @default(now())
+  updatedAt        DateTime                    @updatedAt
 
   @@index([propertyId, createdAt])
 }
@@ -1876,4 +1884,200 @@ model ResortImage {
 
   @@index([propertyId, kind, sortOrder])
   @@index([roomTypeId, sortOrder])
+}
+
+// ======================================================
+// MY PROPERTY: INDIVIDUAL PHYSICAL ROOMS
+// Existing ResortRoomType.quantity and onboarding remain unchanged.
+// Room numbers can be added gradually to an existing room type.
+// ======================================================
+model ResortRoomUnit {
+  id           String                @id @default(uuid())
+  propertyId   String
+  property     ResortProperty        @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  roomTypeId   String
+  roomType     ResortRoomType        @relation(fields: [roomTypeId], references: [id], onDelete: Restrict)
+  number       String
+  reservations ResortReservation[]
+  blocks       ResortRoomBlock[]
+  eventHolds   ResortEventRoomHold[]
+  createdAt    DateTime              @default(now())
+  updatedAt    DateTime              @updatedAt
+
+  @@unique([propertyId, number])
+  @@index([roomTypeId])
+}
+
+enum ResortEventType {
+  EVENT
+  DAY_PROGRAMME
+  MULTI_DAY_RETREAT
+}
+
+enum ResortEventStatus {
+  DRAFT
+  PUBLISHED
+  UNPUBLISHED
+}
+
+enum ResortEventPricingType {
+  FREE
+  PER_PERSON
+  PER_PACKAGE
+}
+
+enum ResortEventImageKind {
+  COVER
+  GALLERY
+}
+
+model ResortEvent {
+  id                    String                      @id @default(uuid())
+  propertyId            String
+  property              ResortProperty              @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  status                ResortEventStatus           @default(DRAFT)
+  draftStep             Int                         @default(1)
+  listingType           ResortEventType?
+  name                  String?
+  shortDescription      String?                     @db.Text
+  venue                 String?
+  maxParticipants       Int?
+  minParticipants       Int?
+  ageRequirements       String?
+  experienceLevel       String?
+  pricingType           ResortEventPricingType?
+  currency              String                      @default("INR")
+  price                 Decimal?                    @db.Decimal(12, 2)
+  accommodationIncluded Boolean?
+  whatsIncluded         String?                     @db.Text
+  whatToBring           String?                     @db.Text
+  whatsNotIncluded      String?                     @db.Text
+  cancellationPolicy    String?                     @db.Text
+  publishedAt           DateTime?
+  occurrences           ResortEventOccurrence[]
+  allocations           ResortEventRoomAllocation[]
+  roomHolds             ResortEventRoomHold[]
+  images                ResortEventImage[]
+  createdAt             DateTime                    @default(now())
+  updatedAt             DateTime                    @updatedAt
+
+  @@index([propertyId, status, createdAt])
+}
+
+model ResortEventOccurrence {
+  id        String                @id @default(uuid())
+  eventId   String
+  event     ResortEvent           @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  startAt   DateTime
+  endAt     DateTime
+  timeZone  String
+  schedule  String                @db.Text
+  roomHolds ResortEventRoomHold[]
+  createdAt DateTime              @default(now())
+
+  @@index([eventId, startAt])
+}
+
+// Quantities selected in the Figma Pricing & accommodation step.
+model ResortEventRoomAllocation {
+  id         String         @id @default(uuid())
+  eventId    String
+  event      ResortEvent    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  roomTypeId String
+  roomType   ResortRoomType @relation(fields: [roomTypeId], references: [id], onDelete: Restrict)
+  quantity   Int
+
+  @@unique([eventId, roomTypeId])
+}
+
+// Upon publishing, particular room units are allocated for each occurrence.
+// Each hold blocks the room nights in the normal room calendar.
+model ResortEventRoomHold {
+  id               String                @id @default(uuid())
+  propertyId       String
+  property         ResortProperty        @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  eventId          String
+  event            ResortEvent           @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  occurrenceId     String
+  occurrence       ResortEventOccurrence @relation(fields: [occurrenceId], references: [id], onDelete: Cascade)
+  roomUnitId       String
+  roomUnit         ResortRoomUnit        @relation(fields: [roomUnitId], references: [id], onDelete: Restrict)
+  startDate        DateTime              @db.Date
+  endDateExclusive DateTime              @db.Date
+  createdAt        DateTime              @default(now())
+
+  @@unique([occurrenceId, roomUnitId])
+  @@index([propertyId, startDate, endDateExclusive])
+  @@index([roomUnitId, startDate, endDateExclusive])
+}
+
+model ResortEventImage {
+  id          String               @id @default(uuid())
+  eventId     String
+  event       ResortEvent          @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  kind        ResortEventImageKind
+  url         String
+  pathname    String               @unique
+  contentType String
+  sizeBytes   Int
+  sortOrder   Int                  @default(0)
+  createdAt   DateTime             @default(now())
+
+  @@index([eventId, kind, sortOrder])
+}
+
+enum ResortReservationStatus {
+  EXPECTED
+  IN_HOUSE
+  DEPARTED
+  CANCELLED
+  NO_SHOW
+}
+
+// A reservation represents one room for one stay, with checkout exclusive.
+// It can be unassigned until a physical room is chosen.
+model ResortReservation {
+  id                  String                  @id @default(uuid())
+  bookingReference    String                  @unique
+  propertyId          String
+  property            ResortProperty          @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  roomTypeId          String
+  roomType            ResortRoomType          @relation(fields: [roomTypeId], references: [id], onDelete: Restrict)
+  roomUnitId          String?
+  roomUnit            ResortRoomUnit?         @relation(fields: [roomUnitId], references: [id], onDelete: Restrict)
+  status              ResortReservationStatus @default(EXPECTED)
+  guestName           String
+  guestEmail          String?
+  guestPhone          String?
+  adults              Int
+  children            Int                     @default(0)
+  checkInDate         DateTime                @db.Date
+  checkOutDate        DateTime                @db.Date
+  expectedArrivalTime String?
+  specialRequests     String?                 @db.Text
+  checkedInAt         DateTime?
+  checkedOutAt        DateTime?
+  createdAt           DateTime                @default(now())
+  updatedAt           DateTime                @updatedAt
+
+  @@index([propertyId, status, checkInDate])
+  @@index([propertyId, checkOutDate])
+  @@index([roomTypeId, checkInDate, checkOutDate])
+  @@index([roomUnitId, checkInDate, checkOutDate])
+}
+
+// Maintenance / owner blocked dates; start inclusive, end exclusive.
+model ResortRoomBlock {
+  id               String         @id @default(uuid())
+  propertyId       String
+  property         ResortProperty @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  roomUnitId       String
+  roomUnit         ResortRoomUnit @relation(fields: [roomUnitId], references: [id], onDelete: Restrict)
+  startDate        DateTime       @db.Date
+  endDateExclusive DateTime       @db.Date
+  reason           String?
+  createdAt        DateTime       @default(now())
+
+  @@index([propertyId, startDate, endDateExclusive])
+  @@index([roomUnitId, startDate, endDateExclusive])
 }

@@ -1,0 +1,835 @@
+"use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.resetForgotPassword = exports.verifyForgotPasswordCode = exports.sendForgotPasswordCode = exports.logoutUser = exports.refreshAccessToken = exports.loginUser = exports.registerUser = void 0;
+const bcryptjs_1 = __importDefault(require("bcryptjs"));
+const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
+const crypto_1 = require("crypto");
+const client_1 = require("@prisma/client");
+const mailer_1 = require("../utils/mailer");
+const prisma = new client_1.PrismaClient();
+// ======================================================
+// AUTH SESSION CONFIGURATION
+// ======================================================
+// Access token = 6 hours
+const ACCESS_TOKEN_EXPIRES_IN = "6h";
+const ACCESS_TOKEN_EXPIRES_SECONDS = 6 * 60 * 60;
+// Refresh/login session = 7 days
+const REFRESH_TOKEN_EXPIRES_IN = "7d";
+const REFRESH_TOKEN_EXPIRES_MS = 7 * 24 * 60 * 60 * 1000;
+const REFRESH_TOKEN_EXPIRES_SECONDS = 7 * 24 * 60 * 60;
+// ======================================================
+// TOKEN HELPERS
+// ======================================================
+const generateRefreshToken = (userId) => {
+    /*
+      tokenId makes refresh tokens unique even if
+      the same user logs in twice during the same second.
+    */
+    const tokenId = (0, crypto_1.randomBytes)(16).toString("hex");
+    return jsonwebtoken_1.default.sign({
+        userId,
+        tokenId,
+    }, process.env
+        .JWT_REFRESH_SECRET, {
+        expiresIn: REFRESH_TOKEN_EXPIRES_IN,
+    });
+};
+const generateAccessToken = (userId, sessionId) => {
+    return jsonwebtoken_1.default.sign({
+        userId,
+        sessionId,
+    }, process.env
+        .JWT_ACCESS_SECRET, {
+        expiresIn: ACCESS_TOKEN_EXPIRES_IN,
+    });
+};
+// ======================================================
+// CREATE LOGIN SESSION
+// ======================================================
+const createAuthSession = async (userId) => {
+    const refreshToken = generateRefreshToken(userId);
+    const expiresAt = new Date(Date.now() +
+        REFRESH_TOKEN_EXPIRES_MS);
+    /*
+      One RefreshToken DB row represents
+      one login/device session.
+    */
+    const session = await prisma.refreshToken.create({
+        data: {
+            token: refreshToken,
+            userId,
+            expiresAt,
+        },
+    });
+    const accessToken = generateAccessToken(userId, session.id);
+    return {
+        accessToken,
+        refreshToken,
+        sessionExpiresAt: session.expiresAt,
+    };
+};
+// ======================================================
+// REGISTER USER
+//
+// Existing USER registration remains the default.
+// Send accountType: "PRACTITIONER" to create a practitioner account.
+//
+// SUPER_ADMIN can NEVER self-register through this endpoint.
+// ======================================================
+const makePractitionerSlug = (fullName) => {
+    const base = fullName
+        .toLowerCase()
+        .trim()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "") ||
+        "practitioner";
+    const suffix = (0, crypto_1.randomBytes)(4).toString("hex");
+    return `${base}-${suffix}`;
+};
+const registerUser = async (req, res) => {
+    try {
+        const email = String(req.body.email || "")
+            .trim()
+            .toLowerCase();
+        const password = String(req.body.password || "");
+        const fullName = String(req.body.fullName || "").trim();
+        const rank = req.body.rank
+            ? String(req.body.rank).trim()
+            : null;
+        const vessel = req.body.vessel
+            ? String(req.body.vessel).trim()
+            : null;
+        const requestedAccountType = String(req.body.accountType ||
+            req.body.role ||
+            "USER")
+            .trim()
+            .toUpperCase();
+        if (!email ||
+            !password ||
+            !fullName) {
+            return res.status(400).json({
+                error: "Full name, email and password are required",
+            });
+        }
+        if (password.length < 8) {
+            return res.status(400).json({
+                error: "Password must contain at least 8 characters",
+            });
+        }
+        if (requestedAccountType !==
+            client_1.UserRole.USER &&
+            requestedAccountType !==
+                client_1.UserRole.PRACTITIONER &&
+            requestedAccountType !==
+                client_1.UserRole.RESORT_OWNER) {
+            return res.status(400).json({
+                error: "Invalid account type",
+            });
+        }
+        const role = requestedAccountType;
+        const existingUser = await prisma.user.findFirst({
+            where: {
+                email: {
+                    equals: email,
+                    mode: "insensitive",
+                },
+            },
+        });
+        if (existingUser) {
+            return res.status(400).json({
+                error: "Email already registered",
+            });
+        }
+        const salt = await bcryptjs_1.default.genSalt(10);
+        const passwordHash = await bcryptjs_1.default.hash(password, salt);
+        const newUser = await prisma.$transaction(async (tx) => {
+            const user = await tx.user.create({
+                data: {
+                    email,
+                    passwordHash,
+                    fullName,
+                    role,
+                    // Preserve your existing normal-user registration fields.
+                    rank: role === client_1.UserRole.USER
+                        ? rank
+                        : null,
+                    vessel: role === client_1.UserRole.USER
+                        ? vessel
+                        : null,
+                },
+            });
+            if (role ===
+                client_1.UserRole.PRACTITIONER) {
+                await tx.practitionerProfile.create({
+                    data: {
+                        userId: user.id,
+                        slug: makePractitionerSlug(fullName),
+                        // Draft profile. Nothing except the User's
+                        // fullName/email/password was required.
+                        approvalStatus: "DRAFT",
+                        isVisible: false,
+                        onboardingStep: 1,
+                        onboardingCompleted: false,
+                    },
+                });
+            }
+            if (role === client_1.UserRole.RESORT_OWNER) {
+                await tx.resortOwnerProfile.create({
+                    data: { userId: user.id },
+                });
+            }
+            return user;
+        });
+        const { accessToken, refreshToken, sessionExpiresAt, } = await createAuthSession(newUser.id);
+        return res.status(201).json({
+            status: "success",
+            accessToken,
+            refreshToken,
+            accessTokenExpiresInSeconds: ACCESS_TOKEN_EXPIRES_SECONDS,
+            refreshTokenExpiresInSeconds: REFRESH_TOKEN_EXPIRES_SECONDS,
+            sessionExpiresAt,
+            user: {
+                id: newUser.id,
+                email: newUser.email,
+                fullName: newUser.fullName,
+                role: newUser.role,
+            },
+            practitionerOnboarding: newUser.role ===
+                client_1.UserRole.PRACTITIONER
+                ? {
+                    required: true,
+                    completed: false,
+                    approvalStatus: "DRAFT",
+                    nextStep: 1,
+                }
+                : null,
+            resortOnboarding: newUser.role === client_1.UserRole.RESORT_OWNER
+                ? { required: true, completed: false, nextStep: 1, propertyId: null }
+                : null,
+        });
+    }
+    catch (error) {
+        console.error("Registration error:", error);
+        return res.status(500).json({
+            error: "Internal server error during registration",
+        });
+    }
+};
+exports.registerUser = registerUser;
+// ======================================================
+// LOGIN USER
+// ======================================================
+const loginUser = async (req, res) => {
+    try {
+        const email = String(req.body.email || "")
+            .trim()
+            .toLowerCase();
+        const password = String(req.body.password || "");
+        if (!email ||
+            !password) {
+            return res.status(400).json({
+                error: "Email and password are required",
+            });
+        }
+        const user = await prisma.user.findFirst({
+            where: {
+                email: {
+                    equals: email,
+                    mode: "insensitive",
+                },
+            },
+            include: {
+                practitionerProfile: {
+                    select: {
+                        id: true,
+                        onboardingStep: true,
+                        onboardingCompleted: true,
+                        approvalStatus: true,
+                        isVisible: true,
+                    },
+                },
+                resortOwnerProfile: {
+                    select: {
+                        properties: {
+                            orderBy: { createdAt: "asc" },
+                            select: {
+                                id: true,
+                                onboardingStep: true,
+                                onboardingCompleted: true,
+                                status: true,
+                            },
+                        },
+                    },
+                },
+            },
+        });
+        if (!user) {
+            return res.status(404).json({
+                error: "User not found",
+            });
+        }
+        const isMatch = await bcryptjs_1.default.compare(password, user.passwordHash);
+        if (!isMatch) {
+            return res.status(401).json({
+                error: "Invalid credentials",
+            });
+        }
+        const { accessToken, refreshToken, sessionExpiresAt, } = await createAuthSession(user.id);
+        const isPractitioner = user.role ===
+            client_1.UserRole.PRACTITIONER;
+        return res.status(200).json({
+            status: "success",
+            accessToken,
+            refreshToken,
+            accessTokenExpiresInSeconds: ACCESS_TOKEN_EXPIRES_SECONDS,
+            refreshTokenExpiresInSeconds: REFRESH_TOKEN_EXPIRES_SECONDS,
+            sessionExpiresAt,
+            user: {
+                id: user.id,
+                email: user.email,
+                fullName: user.fullName,
+                role: user.role,
+            },
+            practitionerOnboarding: isPractitioner
+                ? {
+                    required: !user
+                        .practitionerProfile
+                        ?.onboardingCompleted,
+                    completed: user
+                        .practitionerProfile
+                        ?.onboardingCompleted ??
+                        false,
+                    approvalStatus: user
+                        .practitionerProfile
+                        ?.approvalStatus ??
+                        "DRAFT",
+                    nextStep: user
+                        .practitionerProfile
+                        ?.onboardingStep ??
+                        1,
+                    profileId: user
+                        .practitionerProfile
+                        ?.id ??
+                        null,
+                }
+                : null,
+            resortOnboarding: user.role === client_1.UserRole.RESORT_OWNER
+                ? (() => {
+                    const properties = user.resortOwnerProfile?.properties ?? [];
+                    const draft = properties.find(p => !p.onboardingCompleted);
+                    return {
+                        required: properties.length === 0 || Boolean(draft),
+                        completed: properties.some(p => p.onboardingCompleted),
+                        nextStep: draft?.onboardingStep ?? (properties.length ? 8 : 1),
+                        propertyId: draft?.id ?? properties[0]?.id ?? null,
+                        properties,
+                    };
+                })()
+                : null,
+        });
+    }
+    catch (error) {
+        console.error("Login error:", error);
+        return res.status(500).json({
+            error: "Internal server error during login",
+        });
+    }
+};
+exports.loginUser = loginUser;
+// ======================================================
+// REFRESH ACCESS TOKEN
+// ======================================================
+const refreshAccessToken = async (req, res) => {
+    try {
+        const refreshToken = String(req.body.refreshToken || "").trim();
+        // ------------------------------------------------
+        // Missing token
+        // ------------------------------------------------
+        if (!refreshToken) {
+            return res.status(401).json({
+                status: "error",
+                code: "REFRESH_TOKEN_MISSING",
+                message: "Your session cannot be refreshed. Please sign in again.",
+                action: "LOGIN_REQUIRED",
+                shouldLogout: true,
+            });
+        }
+        // ------------------------------------------------
+        // Find login session
+        // ------------------------------------------------
+        const storedToken = await prisma.refreshToken.findUnique({
+            where: {
+                token: refreshToken,
+            },
+        });
+        if (!storedToken) {
+            return res.status(401).json({
+                status: "error",
+                code: "SESSION_EXPIRED",
+                message: "Your session has expired or you have been logged out. Please sign in again.",
+                action: "LOGIN_REQUIRED",
+                shouldLogout: true,
+            });
+        }
+        // ------------------------------------------------
+        // Check DB expiration
+        // ------------------------------------------------
+        if (storedToken.expiresAt.getTime() <=
+            Date.now()) {
+            await prisma.refreshToken.deleteMany({
+                where: {
+                    id: storedToken.id,
+                },
+            });
+            return res.status(401).json({
+                status: "error",
+                code: "SESSION_EXPIRED",
+                message: "Your login session has expired. Please sign in again.",
+                action: "LOGIN_REQUIRED",
+                shouldLogout: true,
+            });
+        }
+        // ------------------------------------------------
+        // Verify JWT refresh token
+        // ------------------------------------------------
+        let decoded;
+        try {
+            decoded = jsonwebtoken_1.default.verify(refreshToken, process.env
+                .JWT_REFRESH_SECRET);
+        }
+        catch (error) {
+            /*
+              Remove unusable session.
+            */
+            await prisma.refreshToken.deleteMany({
+                where: {
+                    token: refreshToken,
+                },
+            });
+            return res.status(401).json({
+                status: "error",
+                code: "SESSION_EXPIRED",
+                message: "Your login session has expired. Please sign in again.",
+                action: "LOGIN_REQUIRED",
+                shouldLogout: true,
+            });
+        }
+        // ------------------------------------------------
+        // Verify session belongs to same user
+        // ------------------------------------------------
+        if (!decoded.userId ||
+            decoded.userId !==
+                storedToken.userId) {
+            await prisma.refreshToken.deleteMany({
+                where: {
+                    id: storedToken.id,
+                },
+            });
+            return res.status(401).json({
+                status: "error",
+                code: "SESSION_INVALID",
+                message: "Your login session is no longer valid. Please sign in again.",
+                action: "LOGIN_REQUIRED",
+                shouldLogout: true,
+            });
+        }
+        // ------------------------------------------------
+        // Generate another 6-hour access token
+        // ------------------------------------------------
+        const newAccessToken = generateAccessToken(storedToken.userId, storedToken.id);
+        return res.status(200).json({
+            status: "success",
+            message: "Session refreshed successfully.",
+            accessToken: newAccessToken,
+            accessTokenExpiresInSeconds: ACCESS_TOKEN_EXPIRES_SECONDS,
+            sessionExpiresAt: storedToken.expiresAt,
+        });
+    }
+    catch (error) {
+        console.error("Refresh error:", error);
+        return res.status(500).json({
+            status: "error",
+            code: "REFRESH_FAILED",
+            message: "Unable to refresh your session. Please try again.",
+        });
+    }
+};
+exports.refreshAccessToken = refreshAccessToken;
+// ======================================================
+// LOGOUT USER
+// ======================================================
+const logoutUser = async (req, res) => {
+    try {
+        const refreshToken = String(req.body.refreshToken || "").trim();
+        if (!refreshToken) {
+            return res.status(400).json({
+                status: "error",
+                code: "REFRESH_TOKEN_REQUIRED",
+                message: "Unable to identify the current login session.",
+            });
+        }
+        /*
+          Remove this particular login/device session.
+    
+          Because access tokens contain the DB session ID,
+          deleting this row also causes the existing access
+          token to become invalid immediately.
+        */
+        await prisma.refreshToken.deleteMany({
+            where: {
+                token: refreshToken,
+            },
+        });
+        return res.status(200).json({
+            status: "success",
+            code: "LOGOUT_SUCCESS",
+            message: "You have been logged out successfully. Please sign in again to continue.",
+            action: "LOGIN_REQUIRED",
+            shouldLogout: true,
+        });
+    }
+    catch (error) {
+        console.error("Logout error:", error);
+        return res.status(500).json({
+            status: "error",
+            code: "LOGOUT_FAILED",
+            message: "Unable to complete logout.",
+        });
+    }
+};
+exports.logoutUser = logoutUser;
+// ======================================================
+// FORGOT PASSWORD - SEND VERIFICATION CODE
+// ======================================================
+const sendForgotPasswordCode = async (req, res) => {
+    try {
+        const email = String(req.body.email || "").trim();
+        if (!email) {
+            return res.status(400).json({
+                error: "Email is required",
+            });
+        }
+        const user = await prisma.user.findFirst({
+            where: {
+                email: {
+                    equals: email,
+                    mode: "insensitive",
+                },
+            },
+        });
+        /*
+          Same response when account doesn't exist
+          prevents email enumeration.
+        */
+        if (!user) {
+            return res.status(200).json({
+                status: "success",
+                message: "If an account exists with this email, a verification code has been sent.",
+                resendAfterSeconds: 60,
+            });
+        }
+        const existingReset = await prisma.passwordReset.findUnique({
+            where: {
+                userId: user.id,
+            },
+        });
+        if (existingReset &&
+            existingReset
+                .resendAvailableAt
+                .getTime() >
+                Date.now()) {
+            const remainingSeconds = Math.ceil((existingReset
+                .resendAvailableAt
+                .getTime() -
+                Date.now()) / 1000);
+            return res.status(429).json({
+                error: "Please wait before requesting another verification code",
+                retryAfterSeconds: remainingSeconds,
+            });
+        }
+        const otp = (0, crypto_1.randomInt)(100000, 1000000).toString();
+        const otpHash = await bcryptjs_1.default.hash(otp, 10);
+        const otpExpiresAt = new Date(Date.now() +
+            10 * 60 * 1000);
+        const resendAvailableAt = new Date(Date.now() +
+            60 * 1000);
+        await prisma.passwordReset.upsert({
+            where: {
+                userId: user.id,
+            },
+            create: {
+                userId: user.id,
+                otpHash,
+                otpExpiresAt,
+                otpAttempts: 0,
+                resendAvailableAt,
+            },
+            update: {
+                otpHash,
+                otpExpiresAt,
+                otpAttempts: 0,
+                resendAvailableAt,
+                verifiedAt: null,
+                resetTokenHash: null,
+                resetTokenExpiresAt: null,
+            },
+        });
+        try {
+            await (0, mailer_1.sendPasswordResetEmail)(user.email, otp);
+        }
+        catch (mailError) {
+            console.error("Forgot password email sending failed:", mailError);
+            await prisma.passwordReset.deleteMany({
+                where: {
+                    userId: user.id,
+                },
+            });
+            return res.status(500).json({
+                error: "Unable to send verification code. Please try again.",
+            });
+        }
+        return res.status(200).json({
+            status: "success",
+            message: "If an account exists with this email, a verification code has been sent.",
+            expiresInSeconds: 600,
+            resendAfterSeconds: 60,
+        });
+    }
+    catch (error) {
+        console.error("Forgot password send code error:", error);
+        return res.status(500).json({
+            error: "Internal server error",
+        });
+    }
+};
+exports.sendForgotPasswordCode = sendForgotPasswordCode;
+// ======================================================
+// FORGOT PASSWORD - VERIFY CODE
+// ======================================================
+const verifyForgotPasswordCode = async (req, res) => {
+    try {
+        const email = String(req.body.email || "").trim();
+        const code = String(req.body.code || "").trim();
+        if (!email || !code) {
+            return res.status(400).json({
+                error: "Email and verification code are required",
+            });
+        }
+        if (!/^\d{6}$/.test(code)) {
+            return res.status(400).json({
+                error: "Verification code must be 6 digits",
+            });
+        }
+        const user = await prisma.user.findFirst({
+            where: {
+                email: {
+                    equals: email,
+                    mode: "insensitive",
+                },
+            },
+        });
+        if (!user) {
+            return res.status(400).json({
+                error: "Invalid or expired verification code",
+            });
+        }
+        const passwordReset = await prisma.passwordReset.findUnique({
+            where: {
+                userId: user.id,
+            },
+        });
+        if (!passwordReset) {
+            return res.status(400).json({
+                error: "Invalid or expired verification code",
+            });
+        }
+        if (passwordReset.verifiedAt) {
+            return res.status(400).json({
+                error: "Verification code has already been used. Please continue resetting your password.",
+            });
+        }
+        if (passwordReset
+            .otpExpiresAt
+            .getTime() <
+            Date.now()) {
+            await prisma.passwordReset.delete({
+                where: {
+                    userId: user.id,
+                },
+            });
+            return res.status(400).json({
+                error: "Verification code has expired. Please request a new code.",
+            });
+        }
+        const MAX_ATTEMPTS = 5;
+        if (passwordReset
+            .otpAttempts >=
+            MAX_ATTEMPTS) {
+            await prisma.passwordReset.delete({
+                where: {
+                    userId: user.id,
+                },
+            });
+            return res.status(429).json({
+                error: "Too many incorrect attempts. Please request a new verification code.",
+            });
+        }
+        const isValidCode = await bcryptjs_1.default.compare(code, passwordReset.otpHash);
+        if (!isValidCode) {
+            const newAttempts = passwordReset.otpAttempts +
+                1;
+            if (newAttempts >=
+                MAX_ATTEMPTS) {
+                await prisma.passwordReset.delete({
+                    where: {
+                        userId: user.id,
+                    },
+                });
+                return res.status(429).json({
+                    error: "Too many incorrect attempts. Please request a new verification code.",
+                });
+            }
+            await prisma.passwordReset.update({
+                where: {
+                    userId: user.id,
+                },
+                data: {
+                    otpAttempts: newAttempts,
+                },
+            });
+            return res.status(400).json({
+                error: "Invalid verification code",
+                attemptsRemaining: MAX_ATTEMPTS -
+                    newAttempts,
+            });
+        }
+        // Generate temporary password-reset token
+        const resetToken = (0, crypto_1.randomBytes)(32).toString("hex");
+        const resetTokenHash = (0, crypto_1.createHash)("sha256")
+            .update(resetToken)
+            .digest("hex");
+        const resetTokenExpiresAt = new Date(Date.now() +
+            15 * 60 * 1000);
+        await prisma.passwordReset.update({
+            where: {
+                userId: user.id,
+            },
+            data: {
+                verifiedAt: new Date(),
+                resetTokenHash,
+                resetTokenExpiresAt,
+                otpAttempts: 0,
+            },
+        });
+        return res.status(200).json({
+            status: "success",
+            message: "Verification code confirmed",
+            resetToken,
+            expiresInSeconds: 900,
+        });
+    }
+    catch (error) {
+        console.error("Forgot password verify code error:", error);
+        return res.status(500).json({
+            error: "Internal server error",
+        });
+    }
+};
+exports.verifyForgotPasswordCode = verifyForgotPasswordCode;
+// ======================================================
+// FORGOT PASSWORD - RESET PASSWORD
+// ======================================================
+const resetForgotPassword = async (req, res) => {
+    try {
+        const { resetToken, newPassword, confirmPassword, } = req.body;
+        if (!resetToken ||
+            !newPassword ||
+            !confirmPassword) {
+            return res.status(400).json({
+                error: "Reset token, new password and confirm password are required",
+            });
+        }
+        if (newPassword !==
+            confirmPassword) {
+            return res.status(400).json({
+                error: "Passwords do not match",
+            });
+        }
+        if (newPassword.length <
+            8) {
+            return res.status(400).json({
+                error: "Password must contain at least 8 characters",
+            });
+        }
+        const resetTokenHash = (0, crypto_1.createHash)("sha256")
+            .update(String(resetToken))
+            .digest("hex");
+        const passwordReset = await prisma.passwordReset.findFirst({
+            where: {
+                resetTokenHash,
+                verifiedAt: {
+                    not: null,
+                },
+                resetTokenExpiresAt: {
+                    gt: new Date(),
+                },
+            },
+            include: {
+                user: true,
+            },
+        });
+        if (!passwordReset) {
+            return res.status(400).json({
+                error: "Invalid or expired password reset request",
+            });
+        }
+        const user = passwordReset.user;
+        const isSamePassword = await bcryptjs_1.default.compare(newPassword, user.passwordHash);
+        if (isSamePassword) {
+            return res.status(400).json({
+                error: "Your new password must be different from your current password",
+            });
+        }
+        const salt = await bcryptjs_1.default.genSalt(10);
+        const newPasswordHash = await bcryptjs_1.default.hash(newPassword, salt);
+        /*
+          Deleting refresh sessions also invalidates
+          existing access tokens because middleware now
+          verifies the sessionId on every protected request.
+        */
+        await prisma.$transaction([
+            prisma.user.update({
+                where: {
+                    id: user.id,
+                },
+                data: {
+                    passwordHash: newPasswordHash,
+                },
+            }),
+            prisma.refreshToken.deleteMany({
+                where: {
+                    userId: user.id,
+                },
+            }),
+            prisma.passwordReset.delete({
+                where: {
+                    userId: user.id,
+                },
+            }),
+        ]);
+        return res.status(200).json({
+            status: "success",
+            message: "Password reset successfully. Please sign in with your new password.",
+        });
+    }
+    catch (error) {
+        console.error("Forgot password reset error:", error);
+        return res.status(500).json({
+            error: "Internal server error",
+        });
+    }
+};
+exports.resetForgotPassword = resetForgotPassword;

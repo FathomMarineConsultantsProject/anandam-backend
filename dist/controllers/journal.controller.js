@@ -1,0 +1,707 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.deleteJournalEntry = exports.getMyJournalEntryById = exports.getMyJournalEntries = exports.saveJournalEntry = exports.updateJournalEntry = exports.createJournalEntry = exports.getJournalTemplateBySlug = exports.getJournalTemplates = void 0;
+const client_1 = require("@prisma/client");
+const prisma = new client_1.PrismaClient();
+// ======================================================
+// AUTH USER ID
+// ======================================================
+const getUserId = (req) => {
+    const userId = req?.user?.userId ||
+        req?.userId ||
+        req?.user?.id;
+    return userId
+        ? String(userId)
+        : undefined;
+};
+// ======================================================
+// ROUTE PARAM HELPER
+// Express may type route params as string | string[].
+// Prisma requires a definite string.
+// ======================================================
+const getParamString = (value) => {
+    if (Array.isArray(value)) {
+        return value[0] || "";
+    }
+    return value || "";
+};
+// ======================================================
+// GET ALL JOURNAL TEMPLATES
+// ======================================================
+const getJournalTemplates = async (req, res) => {
+    try {
+        const templates = await prisma
+            .journalTemplate
+            .findMany({
+            where: {
+                isActive: true,
+            },
+            orderBy: {
+                sortOrder: "asc",
+            },
+            select: {
+                id: true,
+                slug: true,
+                title: true,
+                description: true,
+                imageKey: true,
+                sortOrder: true,
+                _count: {
+                    select: {
+                        questions: true,
+                    },
+                },
+            },
+        });
+        return res.status(200).json({
+            templates,
+        });
+    }
+    catch (error) {
+        console.error("getJournalTemplates error:", error);
+        return res.status(500).json({
+            message: "Unable to load journal templates.",
+        });
+    }
+};
+exports.getJournalTemplates = getJournalTemplates;
+// ======================================================
+// GET ONE JOURNAL TEMPLATE
+// ======================================================
+const getJournalTemplateBySlug = async (req, res) => {
+    try {
+        const slug = getParamString(req.params.slug);
+        if (!slug) {
+            return res.status(400).json({
+                message: "Journal template slug is required.",
+            });
+        }
+        const template = await prisma
+            .journalTemplate
+            .findFirst({
+            where: {
+                slug,
+                isActive: true,
+            },
+            include: {
+                questions: {
+                    where: {
+                        isActive: true,
+                    },
+                    orderBy: {
+                        sortOrder: "asc",
+                    },
+                    select: {
+                        id: true,
+                        questionKey: true,
+                        questionText: true,
+                        helperText: true,
+                        sortOrder: true,
+                        isRequired: true,
+                    },
+                },
+            },
+        });
+        if (!template) {
+            return res.status(404).json({
+                message: "Journal template not found.",
+            });
+        }
+        return res.status(200).json({
+            template,
+        });
+    }
+    catch (error) {
+        console.error("getJournalTemplateBySlug error:", error);
+        return res.status(500).json({
+            message: "Unable to load journal template.",
+        });
+    }
+};
+exports.getJournalTemplateBySlug = getJournalTemplateBySlug;
+// ======================================================
+// CREATE JOURNAL ENTRY
+// ======================================================
+const createJournalEntry = async (req, res) => {
+    try {
+        const userId = getUserId(req);
+        if (!userId) {
+            return res.status(401).json({
+                message: "Unauthorized.",
+            });
+        }
+        const { type, templateId, templateSlug, title, content, entryDate, } = req.body;
+        const requestedType = type ===
+            client_1.JournalEntryType.CUSTOM
+            ? client_1.JournalEntryType.CUSTOM
+            : client_1.JournalEntryType.TEMPLATE;
+        let template = null;
+        if (requestedType ===
+            client_1.JournalEntryType.TEMPLATE) {
+            if (!templateId &&
+                !templateSlug) {
+                return res.status(400).json({
+                    message: "A journal template is required.",
+                });
+            }
+            template =
+                await prisma
+                    .journalTemplate
+                    .findFirst({
+                    where: {
+                        isActive: true,
+                        ...(templateId
+                            ? {
+                                id: String(templateId),
+                            }
+                            : {
+                                slug: String(templateSlug),
+                            }),
+                    },
+                    select: {
+                        id: true,
+                        title: true,
+                        description: true,
+                    },
+                });
+            if (!template) {
+                return res.status(404).json({
+                    message: "Journal template not found.",
+                });
+            }
+        }
+        const entry = await prisma
+            .journalEntry
+            .create({
+            data: {
+                userId,
+                type: requestedType,
+                templateId: template?.id ||
+                    null,
+                title: title
+                    ? String(title)
+                    : null,
+                content: content
+                    ? String(content)
+                    : null,
+                entryDate: entryDate
+                    ? new Date(entryDate)
+                    : new Date(),
+                templateTitleSnapshot: template?.title ||
+                    null,
+                templateDescriptionSnapshot: template
+                    ?.description ||
+                    null,
+                status: client_1.JournalEntryStatus.DRAFT,
+            },
+        });
+        return res.status(201).json({
+            message: "Journal draft created.",
+            entry,
+        });
+    }
+    catch (error) {
+        console.error("createJournalEntry error:", error);
+        return res.status(500).json({
+            message: "Unable to create journal entry.",
+        });
+    }
+};
+exports.createJournalEntry = createJournalEntry;
+// ======================================================
+// UPDATE JOURNAL ENTRY / SAVE DRAFT CONTENT
+// ======================================================
+const updateJournalEntry = async (req, res) => {
+    try {
+        const userId = getUserId(req);
+        if (!userId) {
+            return res.status(401).json({
+                message: "Unauthorized.",
+            });
+        }
+        const entryId = getParamString(req.params.entryId);
+        if (!entryId) {
+            return res.status(400).json({
+                message: "Journal entry ID is required.",
+            });
+        }
+        const existingEntry = await prisma
+            .journalEntry
+            .findFirst({
+            where: {
+                id: entryId,
+                userId,
+            },
+            include: {
+                template: {
+                    include: {
+                        questions: {
+                            where: {
+                                isActive: true,
+                            },
+                        },
+                    },
+                },
+            },
+        });
+        if (!existingEntry) {
+            return res.status(404).json({
+                message: "Journal entry not found.",
+            });
+        }
+        const { title, content, entryDate, answers, customBlocks, } = req.body;
+        const answerList = Array.isArray(answers)
+            ? answers
+            : null;
+        const customBlockList = Array.isArray(customBlocks)
+            ? customBlocks
+            : null;
+        // ==================================================
+        // VALIDATE TEMPLATE QUESTION IDS
+        // ==================================================
+        let validQuestionMap = new Map();
+        if (existingEntry.template) {
+            validQuestionMap =
+                new Map(existingEntry
+                    .template
+                    .questions
+                    .map((question) => [
+                    question.id,
+                    question
+                        .questionText,
+                ]));
+        }
+        if (answerList) {
+            for (const answer of answerList) {
+                const questionId = String(answer?.questionId ||
+                    "");
+                if (!validQuestionMap.has(questionId)) {
+                    return res.status(400).json({
+                        message: "One or more journal questions are invalid for this template.",
+                    });
+                }
+            }
+        }
+        await prisma
+            .$transaction(async (tx) => {
+            await tx
+                .journalEntry
+                .update({
+                where: {
+                    id: entryId,
+                },
+                data: {
+                    ...(title !==
+                        undefined
+                        ? {
+                            title: title
+                                ? String(title)
+                                : null,
+                        }
+                        : {}),
+                    ...(content !==
+                        undefined
+                        ? {
+                            content: content
+                                ? String(content)
+                                : null,
+                        }
+                        : {}),
+                    ...(entryDate
+                        ? {
+                            entryDate: new Date(entryDate),
+                        }
+                        : {}),
+                },
+            });
+            // ============================================
+            // TEMPLATE ANSWERS
+            // ============================================
+            if (answerList) {
+                await tx
+                    .journalAnswer
+                    .deleteMany({
+                    where: {
+                        entryId,
+                    },
+                });
+                if (answerList.length >
+                    0) {
+                    await tx
+                        .journalAnswer
+                        .createMany({
+                        data: answerList.map((answer) => {
+                            const questionId = String(answer
+                                ?.questionId ||
+                                "");
+                            return {
+                                entryId,
+                                questionId,
+                                questionTextSnapshot: validQuestionMap.get(questionId) ||
+                                    "",
+                                answer: String(answer
+                                    ?.answer ||
+                                    ""),
+                            };
+                        }),
+                    });
+                }
+            }
+            // ============================================
+            // CUSTOM BLOCKS
+            // ============================================
+            if (customBlockList) {
+                await tx
+                    .journalCustomBlock
+                    .deleteMany({
+                    where: {
+                        entryId,
+                    },
+                });
+                if (customBlockList.length >
+                    0) {
+                    await tx
+                        .journalCustomBlock
+                        .createMany({
+                        data: customBlockList.map((block, index) => ({
+                            entryId,
+                            type: block?.type ===
+                                client_1.JournalCustomBlockType.NOTE
+                                ? client_1.JournalCustomBlockType.NOTE
+                                : client_1.JournalCustomBlockType.QUESTION,
+                            prompt: block?.prompt
+                                ? String(block.prompt)
+                                : null,
+                            content: String(block
+                                ?.content ||
+                                ""),
+                            sortOrder: Number.isInteger(block
+                                ?.sortOrder)
+                                ? Number(block
+                                    .sortOrder)
+                                : index +
+                                    1,
+                        })),
+                    });
+                }
+            }
+        });
+        const entry = await getFullEntry(entryId, userId);
+        return res.status(200).json({
+            message: "Journal draft updated.",
+            entry,
+        });
+    }
+    catch (error) {
+        console.error("updateJournalEntry error:", error);
+        return res.status(500).json({
+            message: "Unable to update journal entry.",
+        });
+    }
+};
+exports.updateJournalEntry = updateJournalEntry;
+// ======================================================
+// SAVE / FINALISE JOURNAL
+// ======================================================
+const saveJournalEntry = async (req, res) => {
+    try {
+        const userId = getUserId(req);
+        if (!userId) {
+            return res.status(401).json({
+                message: "Unauthorized.",
+            });
+        }
+        const entryId = getParamString(req.params.entryId);
+        if (!entryId) {
+            return res.status(400).json({
+                message: "Journal entry ID is required.",
+            });
+        }
+        const existing = await prisma
+            .journalEntry
+            .findFirst({
+            where: {
+                id: entryId,
+                userId,
+            },
+            select: {
+                id: true,
+            },
+        });
+        if (!existing) {
+            return res.status(404).json({
+                message: "Journal entry not found.",
+            });
+        }
+        await prisma
+            .journalEntry
+            .update({
+            where: {
+                id: entryId,
+            },
+            data: {
+                status: client_1.JournalEntryStatus.SAVED,
+                savedAt: new Date(),
+            },
+        });
+        const entry = await getFullEntry(entryId, userId);
+        return res.status(200).json({
+            message: "Journal entry saved.",
+            entry,
+        });
+    }
+    catch (error) {
+        console.error("saveJournalEntry error:", error);
+        return res.status(500).json({
+            message: "Unable to save journal entry.",
+        });
+    }
+};
+exports.saveJournalEntry = saveJournalEntry;
+// ======================================================
+// GET MY JOURNAL ENTRIES
+// ======================================================
+const getMyJournalEntries = async (req, res) => {
+    try {
+        const userId = getUserId(req);
+        if (!userId) {
+            return res.status(401).json({
+                message: "Unauthorized.",
+            });
+        }
+        const statusQuery = req.query.status
+            ? String(req.query.status).toUpperCase()
+            : "";
+        const search = req.query.search
+            ? String(req.query.search).trim()
+            : "";
+        let status;
+        if (statusQuery ===
+            "DRAFT") {
+            status =
+                client_1.JournalEntryStatus.DRAFT;
+        }
+        if (statusQuery ===
+            "SAVED") {
+            status =
+                client_1.JournalEntryStatus.SAVED;
+        }
+        const entries = await prisma
+            .journalEntry
+            .findMany({
+            where: {
+                userId,
+                ...(status
+                    ? {
+                        status,
+                    }
+                    : {}),
+                ...(search
+                    ? {
+                        OR: [
+                            {
+                                title: {
+                                    contains: search,
+                                    mode: "insensitive",
+                                },
+                            },
+                            {
+                                templateTitleSnapshot: {
+                                    contains: search,
+                                    mode: "insensitive",
+                                },
+                            },
+                            {
+                                content: {
+                                    contains: search,
+                                    mode: "insensitive",
+                                },
+                            },
+                        ],
+                    }
+                    : {}),
+            },
+            orderBy: [
+                {
+                    entryDate: "desc",
+                },
+                {
+                    updatedAt: "desc",
+                },
+            ],
+            select: {
+                id: true,
+                type: true,
+                status: true,
+                title: true,
+                content: true,
+                entryDate: true,
+                templateTitleSnapshot: true,
+                templateDescriptionSnapshot: true,
+                savedAt: true,
+                createdAt: true,
+                updatedAt: true,
+                template: {
+                    select: {
+                        slug: true,
+                        imageKey: true,
+                        title: true,
+                    },
+                },
+                _count: {
+                    select: {
+                        answers: true,
+                        customBlocks: true,
+                    },
+                },
+            },
+        });
+        return res.status(200).json({
+            entries,
+        });
+    }
+    catch (error) {
+        console.error("getMyJournalEntries error:", error);
+        return res.status(500).json({
+            message: "Unable to load journal entries.",
+        });
+    }
+};
+exports.getMyJournalEntries = getMyJournalEntries;
+// ======================================================
+// GET ONE OF MY JOURNAL ENTRIES
+// ======================================================
+const getMyJournalEntryById = async (req, res) => {
+    try {
+        const userId = getUserId(req);
+        if (!userId) {
+            return res.status(401).json({
+                message: "Unauthorized.",
+            });
+        }
+        const entryId = getParamString(req.params.entryId);
+        if (!entryId) {
+            return res.status(400).json({
+                message: "Journal entry ID is required.",
+            });
+        }
+        const entry = await getFullEntry(entryId, userId);
+        if (!entry) {
+            return res.status(404).json({
+                message: "Journal entry not found.",
+            });
+        }
+        return res.status(200).json({
+            entry,
+        });
+    }
+    catch (error) {
+        console.error("getMyJournalEntryById error:", error);
+        return res.status(500).json({
+            message: "Unable to load journal entry.",
+        });
+    }
+};
+exports.getMyJournalEntryById = getMyJournalEntryById;
+// ======================================================
+// DELETE JOURNAL ENTRY
+// ======================================================
+const deleteJournalEntry = async (req, res) => {
+    try {
+        const userId = getUserId(req);
+        if (!userId) {
+            return res.status(401).json({
+                message: "Unauthorized.",
+            });
+        }
+        const entryId = getParamString(req.params.entryId);
+        if (!entryId) {
+            return res.status(400).json({
+                message: "Journal entry ID is required.",
+            });
+        }
+        const existing = await prisma
+            .journalEntry
+            .findFirst({
+            where: {
+                id: entryId,
+                userId,
+            },
+            select: {
+                id: true,
+            },
+        });
+        if (!existing) {
+            return res.status(404).json({
+                message: "Journal entry not found.",
+            });
+        }
+        await prisma
+            .journalEntry
+            .delete({
+            where: {
+                id: entryId,
+            },
+        });
+        return res.status(200).json({
+            message: "Journal entry deleted.",
+        });
+    }
+    catch (error) {
+        console.error("deleteJournalEntry error:", error);
+        return res.status(500).json({
+            message: "Unable to delete journal entry.",
+        });
+    }
+};
+exports.deleteJournalEntry = deleteJournalEntry;
+// ======================================================
+// PRIVATE HELPER
+// ======================================================
+const getFullEntry = async (entryId, userId) => {
+    return prisma
+        .journalEntry
+        .findFirst({
+        where: {
+            id: entryId,
+            userId,
+        },
+        include: {
+            template: {
+                select: {
+                    id: true,
+                    slug: true,
+                    title: true,
+                    description: true,
+                    imageKey: true,
+                    questions: {
+                        where: {
+                            isActive: true,
+                        },
+                        orderBy: {
+                            sortOrder: "asc",
+                        },
+                        select: {
+                            id: true,
+                            questionKey: true,
+                            questionText: true,
+                            helperText: true,
+                            sortOrder: true,
+                            isRequired: true,
+                        },
+                    },
+                },
+            },
+            answers: {
+                orderBy: {
+                    createdAt: "asc",
+                },
+            },
+            customBlocks: {
+                orderBy: {
+                    sortOrder: "asc",
+                },
+            },
+        },
+    });
+};

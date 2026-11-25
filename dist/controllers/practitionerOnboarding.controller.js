@@ -1,0 +1,1183 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.getPractitionerOnboardingSpecialties = exports.submitPractitionerOnboarding = exports.deletePractitionerDocument = exports.getPractitionerDocumentDownloadUrl = exports.confirmPractitionerUpload = exports.createPractitionerUploadUrl = exports.selectPractitionerAvatar = exports.savePractitionerOnlinePresence = exports.savePractitionerProfessionalDetails = exports.savePractitionerBasicDetails = exports.getPractitionerOnboarding = void 0;
+const client_1 = require("@prisma/client");
+const blob_1 = require("@vercel/blob");
+const crypto_1 = require("crypto");
+const prisma = new client_1.PrismaClient();
+const MAX_UPLOAD_BYTES = Math.floor(4.5 * 1024 * 1024);
+const PROFILE_MAX_BYTES = MAX_UPLOAD_BYTES;
+const DOCUMENT_MAX_BYTES = MAX_UPLOAD_BYTES;
+const PROFILE_CONTENT_TYPES = [
+    "image/jpeg",
+    "image/png",
+    "image/webp",
+];
+const DOCUMENT_CONTENT_TYPES = [
+    "application/pdf",
+    "application/msword",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/vnd.ms-excel",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/vnd.ms-excel.sheet.macroEnabled.12",
+    "application/vnd.ms-excel.sheet.binary.macroEnabled.12",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.template",
+    "image/jpeg",
+    "image/png",
+    "image/webp",
+];
+const cleanOptionalString = (value) => {
+    if (typeof value !==
+        "string") {
+        return null;
+    }
+    const cleaned = value.trim();
+    return cleaned ||
+        null;
+};
+const cleanStringArray = (value) => {
+    if (!Array.isArray(value)) {
+        return [];
+    }
+    return [
+        ...new Set(value
+            .map((item) => String(item).trim())
+            .filter(Boolean)),
+    ];
+};
+const safeFileName = (value) => {
+    const cleaned = value
+        .trim()
+        .replace(/[^a-zA-Z0-9._-]+/g, "-")
+        .replace(/-+/g, "-");
+    return (cleaned ||
+        "upload");
+};
+// ======================================================
+// VERCEL BLOB HELPERS
+//
+// The project uses OIDC + multiple Blob stores.
+// issueSignedToken/presignUrl accepts storeId, so these
+// helpers work for BOTH the public profile store and the
+// private document store without exposing a static token.
+// ======================================================
+const getBlobMetadataBySignedHead = async ({ storeId, access, pathname, }) => {
+    // `head()` is OIDC-aware. Passing storeId makes it work
+    // with either the public profile store or the private
+    // practitioner-document store.
+    void access;
+    return (0, blob_1.head)(pathname, {
+        storeId,
+    });
+};
+const deleteBlobBySignedUrl = async ({ storeId, access, pathname, }) => {
+    // `del()` is also OIDC-aware and accepts an explicit storeId.
+    void access;
+    await (0, blob_1.del)(pathname, {
+        storeId,
+    });
+};
+const makeSlug = (fullName) => {
+    const base = fullName
+        .toLowerCase()
+        .trim()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "") ||
+        "practitioner";
+    return `${base}-${(0, crypto_1.randomBytes)(4).toString("hex")}`;
+};
+const ensurePractitionerProfile = async (userId) => {
+    const existing = await prisma
+        .practitionerProfile
+        .findUnique({
+        where: {
+            userId,
+        },
+    });
+    if (existing) {
+        return existing;
+    }
+    const user = await prisma.user.findUnique({
+        where: {
+            id: userId,
+        },
+    });
+    if (!user ||
+        user.role !==
+            client_1.UserRole.PRACTITIONER) {
+        return null;
+    }
+    return prisma
+        .practitionerProfile
+        .create({
+        data: {
+            userId,
+            slug: makeSlug(user.fullName),
+            approvalStatus: "DRAFT",
+            isVisible: false,
+            onboardingStep: 1,
+            onboardingCompleted: false,
+        },
+    });
+};
+const getCompleteProfile = async (userId) => {
+    return prisma
+        .practitionerProfile
+        .findUnique({
+        where: {
+            userId,
+        },
+        include: {
+            user: {
+                select: {
+                    id: true,
+                    fullName: true,
+                    email: true,
+                    contactNumber: true,
+                    avatarMode: true,
+                    avatarId: true,
+                },
+            },
+            specialties: {
+                include: {
+                    specialty: true,
+                },
+            },
+            qualifications: {
+                orderBy: {
+                    createdAt: "asc",
+                },
+            },
+            documents: {
+                orderBy: {
+                    createdAt: "desc",
+                },
+            },
+        },
+    });
+};
+// ======================================================
+// GET CURRENT PRACTITIONER ONBOARDING / PROFILE
+// ======================================================
+const getPractitionerOnboarding = async (req, res) => {
+    try {
+        const userId = req.user?.userId;
+        if (!userId) {
+            return res.status(401).json({
+                message: "Unauthorized",
+            });
+        }
+        const profile = await ensurePractitionerProfile(userId);
+        if (!profile) {
+            return res.status(403).json({
+                message: "Practitioner access required",
+            });
+        }
+        const practitioner = await getCompleteProfile(userId);
+        return res.status(200).json({
+            practitioner,
+        });
+    }
+    catch (error) {
+        console.error("getPractitionerOnboarding:", error);
+        return res.status(500).json({
+            message: "Unable to load practitioner onboarding",
+        });
+    }
+};
+exports.getPractitionerOnboarding = getPractitionerOnboarding;
+// ======================================================
+// STEP 1 - BASIC DETAILS
+//
+// Only fullName + email are mandatory.
+// Everything else may be null / empty and edited later.
+// ======================================================
+const savePractitionerBasicDetails = async (req, res) => {
+    try {
+        const userId = req.user?.userId;
+        if (!userId) {
+            return res.status(401).json({
+                message: "Unauthorized",
+            });
+        }
+        const fullName = String(req.body.fullName || "").trim();
+        const email = String(req.body.email || "")
+            .trim()
+            .toLowerCase();
+        if (!fullName ||
+            !email) {
+            return res.status(400).json({
+                message: "Full name and email are required",
+            });
+        }
+        const existingEmail = await prisma.user.findFirst({
+            where: {
+                email,
+                NOT: {
+                    id: userId,
+                },
+            },
+        });
+        if (existingEmail) {
+            return res.status(409).json({
+                message: "Email is already in use",
+            });
+        }
+        const profile = await ensurePractitionerProfile(userId);
+        if (!profile) {
+            return res.status(403).json({
+                message: "Practitioner access required",
+            });
+        }
+        await prisma.$transaction([
+            prisma.user.update({
+                where: {
+                    id: userId,
+                },
+                data: {
+                    fullName,
+                    email,
+                    contactNumber: cleanOptionalString(req.body.phoneNumber),
+                },
+            }),
+            prisma.practitionerProfile.update({
+                where: {
+                    id: profile.id,
+                },
+                data: {
+                    location: cleanOptionalString(req.body.location),
+                    languages: cleanStringArray(req.body.languages),
+                    about: cleanOptionalString(req.body.about),
+                    onboardingStep: {
+                        set: Math.max(profile
+                            .onboardingStep, 2),
+                    },
+                },
+            }),
+        ]);
+        const practitioner = await getCompleteProfile(userId);
+        return res.status(200).json({
+            message: "Basic details saved",
+            practitioner,
+        });
+    }
+    catch (error) {
+        console.error("savePractitionerBasicDetails:", error);
+        return res.status(500).json({
+            message: "Unable to save basic details",
+        });
+    }
+};
+exports.savePractitionerBasicDetails = savePractitionerBasicDetails;
+// ======================================================
+// STEP 2 - PROFESSIONAL DETAILS
+//
+// Everything in this step is optional.
+// Empty arrays are allowed.
+// ======================================================
+const savePractitionerProfessionalDetails = async (req, res) => {
+    try {
+        const userId = req.user?.userId;
+        if (!userId) {
+            return res.status(401).json({
+                message: "Unauthorized",
+            });
+        }
+        const profile = await ensurePractitionerProfile(userId);
+        if (!profile) {
+            return res.status(403).json({
+                message: "Practitioner access required",
+            });
+        }
+        const specialtyIds = cleanStringArray(req.body.specialtyIds);
+        if (specialtyIds.length >
+            0) {
+            const validSpecialties = await prisma
+                .specialty
+                .count({
+                where: {
+                    id: {
+                        in: specialtyIds,
+                    },
+                    isActive: true,
+                },
+            });
+            if (validSpecialties !==
+                specialtyIds.length) {
+                return res.status(400).json({
+                    message: "One or more specialties are invalid",
+                });
+            }
+        }
+        const experienceRaw = req.body.experienceYears;
+        let experienceYears = null;
+        if (experienceRaw !==
+            undefined &&
+            experienceRaw !==
+                null &&
+            String(experienceRaw).trim() !==
+                "") {
+            const parsed = Number(experienceRaw);
+            if (!Number.isInteger(parsed) ||
+                parsed < 0 ||
+                parsed > 80) {
+                return res.status(400).json({
+                    message: "Years of experience must be a whole number between 0 and 80",
+                });
+            }
+            experienceYears =
+                parsed;
+        }
+        const qualificationsInput = Array.isArray(req.body.qualifications)
+            ? req.body
+                .qualifications
+            : [];
+        const qualifications = qualificationsInput
+            .map((item) => {
+            const qualificationName = cleanOptionalString(item
+                ?.qualificationName);
+            const institution = cleanOptionalString(item
+                ?.institution);
+            let year = null;
+            if (item?.year !==
+                undefined &&
+                item?.year !==
+                    null &&
+                String(item.year).trim() !==
+                    "") {
+                const parsedYear = Number(item.year);
+                if (Number.isInteger(parsedYear) &&
+                    parsedYear >=
+                        1900 &&
+                    parsedYear <=
+                        new Date()
+                            .getFullYear() +
+                            10) {
+                    year =
+                        parsedYear;
+                }
+            }
+            if (!qualificationName &&
+                !institution &&
+                !year) {
+                return null;
+            }
+            return {
+                qualificationName,
+                institution,
+                year,
+            };
+        })
+            .filter(Boolean);
+        await prisma.$transaction(async (tx) => {
+            await tx
+                .practitionerProfile
+                .update({
+                where: {
+                    id: profile.id,
+                },
+                data: {
+                    practitionerType: cleanOptionalString(req.body
+                        .practitionerType),
+                    professionalTitle: cleanOptionalString(req.body
+                        .professionalTitle),
+                    experienceYears,
+                    onboardingStep: {
+                        set: Math.max(profile
+                            .onboardingStep, 3),
+                    },
+                },
+            });
+            await tx
+                .practitionerSpecialty
+                .deleteMany({
+                where: {
+                    practitionerId: profile.id,
+                },
+            });
+            if (specialtyIds.length >
+                0) {
+                await tx
+                    .practitionerSpecialty
+                    .createMany({
+                    data: specialtyIds.map((specialtyId) => ({
+                        practitionerId: profile.id,
+                        specialtyId,
+                    })),
+                    skipDuplicates: true,
+                });
+            }
+            await tx
+                .practitionerQualification
+                .deleteMany({
+                where: {
+                    practitionerId: profile.id,
+                },
+            });
+            if (qualifications.length >
+                0) {
+                await tx
+                    .practitionerQualification
+                    .createMany({
+                    data: qualifications.map((item) => ({
+                        practitionerId: profile.id,
+                        ...item,
+                    })),
+                });
+            }
+        });
+        const practitioner = await getCompleteProfile(userId);
+        return res.status(200).json({
+            message: "Professional details saved",
+            practitioner,
+        });
+    }
+    catch (error) {
+        console.error("savePractitionerProfessionalDetails:", error);
+        return res.status(500).json({
+            message: "Unable to save professional details",
+        });
+    }
+};
+exports.savePractitionerProfessionalDetails = savePractitionerProfessionalDetails;
+// ======================================================
+// STEP 3 - ONLINE PRESENCE
+//
+// All fields optional. This step may be skipped.
+// ======================================================
+const savePractitionerOnlinePresence = async (req, res) => {
+    try {
+        const userId = req.user?.userId;
+        if (!userId) {
+            return res.status(401).json({
+                message: "Unauthorized",
+            });
+        }
+        const profile = await ensurePractitionerProfile(userId);
+        if (!profile) {
+            return res.status(403).json({
+                message: "Practitioner access required",
+            });
+        }
+        await prisma
+            .practitionerProfile
+            .update({
+            where: {
+                id: profile.id,
+            },
+            data: {
+                websiteUrl: cleanOptionalString(req.body.websiteUrl),
+                instagramUrl: cleanOptionalString(req.body.instagramUrl),
+                facebookUrl: cleanOptionalString(req.body.facebookUrl),
+                youtubeUrl: cleanOptionalString(req.body.youtubeUrl),
+                onboardingStep: {
+                    set: Math.max(profile
+                        .onboardingStep, 4),
+                },
+            },
+        });
+        const practitioner = await getCompleteProfile(userId);
+        return res.status(200).json({
+            message: "Online presence saved",
+            practitioner,
+        });
+    }
+    catch (error) {
+        console.error("savePractitionerOnlinePresence:", error);
+        return res.status(500).json({
+            message: "Unable to save online presence",
+        });
+    }
+};
+exports.savePractitionerOnlinePresence = savePractitionerOnlinePresence;
+// ======================================================
+// AVATAR CHOICE
+//
+// INITIALS = initials
+// AVATAR   = one of your predefined Anandam avatars
+//
+// PHOTO is set automatically when a profile image upload is confirmed.
+// ======================================================
+const selectPractitionerAvatar = async (req, res) => {
+    try {
+        const userId = req.user?.userId;
+        if (!userId) {
+            return res.status(401).json({
+                message: "Unauthorized",
+            });
+        }
+        const mode = String(req.body.avatarMode ||
+            "")
+            .trim()
+            .toUpperCase();
+        if (mode !==
+            "INITIALS" &&
+            mode !==
+                "AVATAR") {
+            return res.status(400).json({
+                message: "avatarMode must be INITIALS or AVATAR",
+            });
+        }
+        const avatarId = mode ===
+            "AVATAR"
+            ? cleanOptionalString(req.body.avatarId)
+            : null;
+        if (mode ===
+            "AVATAR" &&
+            !avatarId) {
+            return res.status(400).json({
+                message: "avatarId is required when avatarMode is AVATAR",
+            });
+        }
+        const profile = await ensurePractitionerProfile(userId);
+        if (!profile) {
+            return res.status(403).json({
+                message: "Practitioner access required",
+            });
+        }
+        const oldPhotoPath = profile
+            .profileImagePathname;
+        await prisma.$transaction([
+            prisma.user.update({
+                where: {
+                    id: userId,
+                },
+                data: {
+                    avatarMode: mode,
+                    avatarId,
+                },
+            }),
+            prisma.practitionerProfile.update({
+                where: {
+                    id: profile.id,
+                },
+                data: {
+                    profileImageUrl: null,
+                    profileImagePathname: null,
+                },
+            }),
+        ]);
+        // Best effort cleanup of an old uploaded photo.
+        const profileBlobStoreId = process.env
+            .PRACTITIONER_PROFILE_BLOB_STORE_ID ||
+            process.env
+                .BLOB_STORE_ID;
+        if (oldPhotoPath &&
+            profileBlobStoreId) {
+            try {
+                await deleteBlobBySignedUrl({
+                    storeId: profileBlobStoreId,
+                    access: "public",
+                    pathname: oldPhotoPath,
+                });
+            }
+            catch (error) {
+                console.error("Old practitioner photo cleanup failed:", error);
+            }
+        }
+        const practitioner = await getCompleteProfile(userId);
+        return res.status(200).json({
+            message: "Avatar updated",
+            practitioner,
+        });
+    }
+    catch (error) {
+        console.error("selectPractitionerAvatar:", error);
+        return res.status(500).json({
+            message: "Unable to update avatar",
+        });
+    }
+};
+exports.selectPractitionerAvatar = selectPractitionerAvatar;
+// ======================================================
+// DIRECT UPLOAD - CREATE SIGNED PUT URL
+//
+// PROFILE_IMAGE:
+// - public Blob store
+// - JPEG / PNG / WEBP
+// - maximum 4.5 MB
+//
+// DOCUMENT:
+// - private Blob store
+// - PDF / Word / Excel / images
+// - maximum 4.5 MB
+//
+// The file is uploaded directly from the browser to Blob.
+// It does NOT pass through the Express/Vercel function.
+// ======================================================
+const createPractitionerUploadUrl = async (req, res) => {
+    try {
+        const userId = req.user?.userId;
+        if (!userId) {
+            return res.status(401).json({
+                message: "Unauthorized",
+            });
+        }
+        const profile = await ensurePractitionerProfile(userId);
+        if (!profile) {
+            return res.status(403).json({
+                message: "Practitioner access required",
+            });
+        }
+        const kind = String(req.body.kind || "")
+            .trim()
+            .toUpperCase();
+        const fileName = String(req.body.fileName ||
+            "").trim();
+        const contentType = String(req.body.contentType ||
+            "").trim();
+        const sizeBytes = Number(req.body.sizeBytes);
+        if (!fileName ||
+            !contentType ||
+            !Number.isFinite(sizeBytes) ||
+            sizeBytes <= 0) {
+            return res.status(400).json({
+                message: "kind, fileName, contentType and sizeBytes are required",
+            });
+        }
+        let access;
+        let maxBytes;
+        let allowedContentTypes;
+        let storeId;
+        let folder;
+        if (kind ===
+            "PROFILE_IMAGE") {
+            access =
+                "public";
+            maxBytes =
+                PROFILE_MAX_BYTES;
+            allowedContentTypes =
+                PROFILE_CONTENT_TYPES;
+            storeId =
+                process.env
+                    .PRACTITIONER_PROFILE_BLOB_STORE_ID ||
+                    process.env
+                        .BLOB_STORE_ID;
+            folder =
+                `practitioners/${userId}/profile`;
+        }
+        else if (kind ===
+            "DOCUMENT") {
+            access =
+                "private";
+            maxBytes =
+                DOCUMENT_MAX_BYTES;
+            allowedContentTypes =
+                DOCUMENT_CONTENT_TYPES;
+            storeId =
+                process.env
+                    .PRACTITIONER_DOCUMENT_STORE_ID;
+            folder =
+                `practitioners/${userId}/documents`;
+        }
+        else {
+            return res.status(400).json({
+                message: "kind must be PROFILE_IMAGE or DOCUMENT",
+            });
+        }
+        if (!storeId) {
+            return res.status(500).json({
+                message: kind ===
+                    "PROFILE_IMAGE"
+                    ? "Practitioner profile Blob store is not connected"
+                    : "Practitioner document Blob store is not connected",
+            });
+        }
+        if (sizeBytes >
+            maxBytes) {
+            return res.status(413).json({
+                message: kind ===
+                    "PROFILE_IMAGE"
+                    ? "Profile image must be 4.5 MB or smaller"
+                    : "Document must be 4.5 MB or smaller",
+                maximumSizeInBytes: maxBytes,
+            });
+        }
+        if (!allowedContentTypes
+            .includes(contentType)) {
+            return res.status(415).json({
+                message: "Unsupported file type",
+                allowedContentTypes,
+            });
+        }
+        const pathname = `${folder}/${Date.now()}-${(0, crypto_1.randomBytes)(6).toString("hex")}-${safeFileName(fileName)}`;
+        const validUntil = Date.now() +
+            15 * 60 * 1000;
+        const signedToken = await (0, blob_1.issueSignedToken)({
+            storeId,
+            pathname,
+            operations: [
+                "put",
+            ],
+            validUntil,
+            allowedContentTypes: [
+                contentType,
+            ],
+            maximumSizeInBytes: maxBytes,
+        });
+        const { presignedUrl, } = await (0, blob_1.presignUrl)(signedToken, {
+            access,
+            operation: "put",
+            pathname,
+            validUntil,
+            allowedContentTypes: [
+                contentType,
+            ],
+            maximumSizeInBytes: maxBytes,
+            allowOverwrite: false,
+        });
+        return res.status(200).json({
+            kind,
+            pathname,
+            access,
+            uploadUrl: presignedUrl,
+            method: "PUT",
+            contentType,
+            maximumSizeInBytes: maxBytes,
+            expiresAt: new Date(validUntil).toISOString(),
+        });
+    }
+    catch (error) {
+        console.error("createPractitionerUploadUrl:", error);
+        return res.status(500).json({
+            message: "Unable to prepare upload",
+        });
+    }
+};
+exports.createPractitionerUploadUrl = createPractitionerUploadUrl;
+// ======================================================
+// DIRECT UPLOAD - CONFIRM AFTER BROWSER PUT FINISHES
+//
+// We HEAD the actual blob and verify:
+// - it belongs to this practitioner path
+// - its actual content type
+// - its actual size
+//
+// Only then is it attached to the practitioner profile.
+// ======================================================
+const confirmPractitionerUpload = async (req, res) => {
+    try {
+        const userId = req.user?.userId;
+        if (!userId) {
+            return res.status(401).json({
+                message: "Unauthorized",
+            });
+        }
+        const profile = await ensurePractitionerProfile(userId);
+        if (!profile) {
+            return res.status(403).json({
+                message: "Practitioner access required",
+            });
+        }
+        const kind = String(req.body.kind ||
+            "")
+            .trim()
+            .toUpperCase();
+        const pathname = String(req.body.pathname ||
+            "").trim();
+        const originalFileName = safeFileName(String(req.body.fileName ||
+            "upload"));
+        const documentType = cleanOptionalString(req.body.documentType) ||
+            "SUPPORTING_DOCUMENT";
+        let storeId;
+        let access;
+        let expectedPrefix;
+        let maxBytes;
+        let allowedContentTypes;
+        if (kind ===
+            "PROFILE_IMAGE") {
+            storeId =
+                process.env
+                    .PRACTITIONER_PROFILE_BLOB_STORE_ID ||
+                    process.env
+                        .BLOB_STORE_ID;
+            access =
+                "public";
+            expectedPrefix =
+                `practitioners/${userId}/profile/`;
+            maxBytes =
+                PROFILE_MAX_BYTES;
+            allowedContentTypes =
+                PROFILE_CONTENT_TYPES;
+        }
+        else if (kind ===
+            "DOCUMENT") {
+            storeId =
+                process.env
+                    .PRACTITIONER_DOCUMENT_STORE_ID;
+            access =
+                "private";
+            expectedPrefix =
+                `practitioners/${userId}/documents/`;
+            maxBytes =
+                DOCUMENT_MAX_BYTES;
+            allowedContentTypes =
+                DOCUMENT_CONTENT_TYPES;
+        }
+        else {
+            return res.status(400).json({
+                message: "kind must be PROFILE_IMAGE or DOCUMENT",
+            });
+        }
+        if (!storeId) {
+            return res.status(500).json({
+                message: "Upload Blob store is not connected",
+            });
+        }
+        if (!pathname.startsWith(expectedPrefix)) {
+            return res.status(403).json({
+                message: "Upload does not belong to this practitioner",
+            });
+        }
+        const metadata = await getBlobMetadataBySignedHead({
+            storeId,
+            access,
+            pathname,
+        });
+        const validSize = metadata.size <=
+            maxBytes;
+        const validType = allowedContentTypes
+            .includes(metadata
+            .contentType);
+        if (!validSize ||
+            !validType) {
+            try {
+                await deleteBlobBySignedUrl({
+                    storeId,
+                    access,
+                    pathname,
+                });
+            }
+            catch {
+                // Ignore cleanup error.
+            }
+            return res.status(400).json({
+                message: !validSize
+                    ? (kind ===
+                        "PROFILE_IMAGE"
+                        ? "Profile image must be 4.5 MB or smaller"
+                        : "Document must be 4.5 MB or smaller")
+                    : "Unsupported uploaded file type",
+            });
+        }
+        if (kind ===
+            "PROFILE_IMAGE") {
+            const previousPath = profile
+                .profileImagePathname;
+            await prisma.$transaction([
+                prisma.user.update({
+                    where: {
+                        id: userId,
+                    },
+                    data: {
+                        avatarMode: "PHOTO",
+                        avatarId: null,
+                    },
+                }),
+                prisma.practitionerProfile.update({
+                    where: {
+                        id: profile.id,
+                    },
+                    data: {
+                        profileImageUrl: metadata.url,
+                        profileImagePathname: metadata.pathname,
+                    },
+                }),
+            ]);
+            if (previousPath &&
+                previousPath !==
+                    metadata.pathname) {
+                try {
+                    await deleteBlobBySignedUrl({
+                        storeId,
+                        access: "public",
+                        pathname: previousPath,
+                    });
+                }
+                catch (error) {
+                    console.error("Old profile photo cleanup failed:", error);
+                }
+            }
+            const practitioner = await getCompleteProfile(userId);
+            return res.status(200).json({
+                message: "Profile image uploaded",
+                practitioner,
+            });
+        }
+        const document = await prisma
+            .practitionerDocument
+            .upsert({
+            where: {
+                blobPathname: metadata.pathname,
+            },
+            create: {
+                practitionerId: profile.id,
+                fileName: originalFileName,
+                contentType: metadata.contentType,
+                sizeBytes: metadata.size,
+                blobUrl: metadata.url,
+                blobPathname: metadata.pathname,
+                documentType,
+            },
+            update: {
+                fileName: originalFileName,
+                contentType: metadata.contentType,
+                sizeBytes: metadata.size,
+                documentType,
+            },
+        });
+        return res.status(201).json({
+            message: "Document uploaded",
+            document,
+        });
+    }
+    catch (error) {
+        console.error("confirmPractitionerUpload:", error);
+        const errorMessage = error instanceof Error
+            ? error.message
+            : "Unknown upload confirmation error";
+        return res.status(500).json({
+            message: "Unable to confirm upload",
+            detail: process.env.NODE_ENV === "production"
+                ? undefined
+                : errorMessage,
+        });
+    }
+};
+exports.confirmPractitionerUpload = confirmPractitionerUpload;
+// ======================================================
+// PRIVATE DOCUMENT - TEMPORARY DOWNLOAD URL
+// ======================================================
+const getPractitionerDocumentDownloadUrl = async (req, res) => {
+    try {
+        const userId = req.user?.userId;
+        if (!userId) {
+            return res.status(401).json({
+                message: "Unauthorized",
+            });
+        }
+        const documentId = String(req.params.documentId);
+        const document = await prisma
+            .practitionerDocument
+            .findFirst({
+            where: {
+                id: documentId,
+                practitioner: {
+                    userId,
+                },
+            },
+        });
+        if (!document) {
+            return res.status(404).json({
+                message: "Document not found",
+            });
+        }
+        const storeId = process.env
+            .PRACTITIONER_DOCUMENT_STORE_ID;
+        if (!storeId) {
+            return res.status(500).json({
+                message: "Practitioner document Blob store is not connected",
+            });
+        }
+        const validUntil = Date.now() +
+            5 * 60 * 1000;
+        const signedToken = await (0, blob_1.issueSignedToken)({
+            storeId,
+            pathname: document
+                .blobPathname,
+            operations: [
+                "get",
+            ],
+            validUntil,
+        });
+        const { presignedUrl, } = await (0, blob_1.presignUrl)(signedToken, {
+            access: "private",
+            operation: "get",
+            pathname: document
+                .blobPathname,
+            validUntil,
+        });
+        return res.status(200).json({
+            url: presignedUrl,
+            expiresAt: new Date(validUntil).toISOString(),
+        });
+    }
+    catch (error) {
+        console.error("getPractitionerDocumentDownloadUrl:", error);
+        return res.status(500).json({
+            message: "Unable to open document",
+        });
+    }
+};
+exports.getPractitionerDocumentDownloadUrl = getPractitionerDocumentDownloadUrl;
+// ======================================================
+// DELETE SUPPORTING DOCUMENT
+// ======================================================
+const deletePractitionerDocument = async (req, res) => {
+    try {
+        const userId = req.user?.userId;
+        if (!userId) {
+            return res.status(401).json({
+                message: "Unauthorized",
+            });
+        }
+        const documentId = String(req.params.documentId);
+        const document = await prisma
+            .practitionerDocument
+            .findFirst({
+            where: {
+                id: documentId,
+                practitioner: {
+                    userId,
+                },
+            },
+        });
+        if (!document) {
+            return res.status(404).json({
+                message: "Document not found",
+            });
+        }
+        const storeId = process.env
+            .PRACTITIONER_DOCUMENT_STORE_ID;
+        await prisma
+            .practitionerDocument
+            .delete({
+            where: {
+                id: document.id,
+            },
+        });
+        if (storeId) {
+            try {
+                await deleteBlobBySignedUrl({
+                    storeId,
+                    access: "private",
+                    pathname: document
+                        .blobPathname,
+                });
+            }
+            catch (error) {
+                console.error("Blob document cleanup failed:", error);
+            }
+        }
+        return res.status(200).json({
+            message: "Document deleted",
+        });
+    }
+    catch (error) {
+        console.error("deletePractitionerDocument:", error);
+        return res.status(500).json({
+            message: "Unable to delete document",
+        });
+    }
+};
+exports.deletePractitionerDocument = deletePractitionerDocument;
+// ======================================================
+// STEP 4 - REVIEW & SUBMIT
+//
+// IMPORTANT:
+// Only User.fullName and User.email are mandatory.
+//
+// Submitting does NOT make the practitioner public.
+// It moves the profile to PENDING_REVIEW.
+// SUPER_ADMIN approval will be built later.
+// ======================================================
+const submitPractitionerOnboarding = async (req, res) => {
+    try {
+        const userId = req.user?.userId;
+        if (!userId) {
+            return res.status(401).json({
+                message: "Unauthorized",
+            });
+        }
+        const user = await prisma.user.findUnique({
+            where: {
+                id: userId,
+            },
+            include: {
+                practitionerProfile: true,
+            },
+        });
+        if (!user ||
+            user.role !==
+                client_1.UserRole.PRACTITIONER) {
+            return res.status(403).json({
+                message: "Practitioner access required",
+            });
+        }
+        if (!user.fullName?.trim() ||
+            !user.email?.trim()) {
+            return res.status(400).json({
+                message: "Full name and email are required before submission",
+            });
+        }
+        const profile = user
+            .practitionerProfile ||
+            await ensurePractitionerProfile(userId);
+        if (!profile) {
+            return res.status(403).json({
+                message: "Practitioner profile is unavailable",
+            });
+        }
+        await prisma
+            .practitionerProfile
+            .update({
+            where: {
+                id: profile.id,
+            },
+            data: {
+                onboardingStep: 4,
+                onboardingCompleted: true,
+                approvalStatus: "PENDING_REVIEW",
+                submittedAt: new Date(),
+                // SUPER_ADMIN decides when this becomes visible.
+                isVisible: false,
+            },
+        });
+        const practitioner = await getCompleteProfile(userId);
+        return res.status(200).json({
+            message: "Practitioner profile submitted",
+            practitioner,
+        });
+    }
+    catch (error) {
+        console.error("submitPractitionerOnboarding:", error);
+        return res.status(500).json({
+            message: "Unable to submit practitioner profile",
+        });
+    }
+};
+exports.submitPractitionerOnboarding = submitPractitionerOnboarding;
+const getPractitionerOnboardingSpecialties = async (req, res) => {
+    try {
+        const userId = req.user?.userId;
+        if (!userId) {
+            return res.status(401).json({
+                message: "Unauthorized",
+            });
+        }
+        const specialties = await prisma.specialty.findMany({
+            where: {
+                isActive: true,
+            },
+            orderBy: {
+                name: "asc",
+            },
+            select: {
+                id: true,
+                slug: true,
+                name: true,
+                description: true,
+            },
+        });
+        return res.status(200).json({
+            specialties,
+        });
+    }
+    catch (error) {
+        console.error("getPractitionerOnboardingSpecialties:", error);
+        return res.status(500).json({
+            message: "Unable to load specialties",
+        });
+    }
+};
+exports.getPractitionerOnboardingSpecialties = getPractitionerOnboardingSpecialties;

@@ -1,0 +1,16 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const auth_middleware_1 = require("../middleware/auth.middleware");
+const fitness_controller_1 = require("../controllers/fitness.controller");
+const router = (0, express_1.Router)();
+router.get("/overview", auth_middleware_1.authenticateToken, fitness_controller_1.getFitnessOverview);
+router.get("/workouts", auth_middleware_1.authenticateToken, fitness_controller_1.getFitnessWorkouts);
+router.get("/workouts/:workoutId", auth_middleware_1.authenticateToken, fitness_controller_1.getFitnessWorkoutById);
+router.post("/workouts/:workoutId/start", auth_middleware_1.authenticateToken, fitness_controller_1.startFitnessWorkout);
+router.get("/sessions/active", auth_middleware_1.authenticateToken, fitness_controller_1.getActiveFitnessSession);
+router.patch("/sessions/:sessionId/progress", auth_middleware_1.authenticateToken, fitness_controller_1.updateFitnessProgress);
+router.post("/sessions/:sessionId/complete", auth_middleware_1.authenticateToken, fitness_controller_1.completeFitnessSession);
+router.post("/sessions/:sessionId/end", auth_middleware_1.authenticateToken, fitness_controller_1.endFitnessSession);
+router.get("/history", auth_middleware_1.authenticateToken, fitness_controller_1.getFitnessHistory);
+exports.default = router;

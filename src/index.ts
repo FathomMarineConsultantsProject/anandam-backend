@@ -442,10 +442,10 @@ app.use(
 );
 
 
+// Practitioner onboarding must be free for signed-in practitioner accounts.
+// The onboarding router itself enforces authentication and PRACTITIONER role.
 app.use(
   "/api/practitioner-onboarding",
-  authenticateToken,
-  requireSiteAccess,
   practitionerOnboardingRoutes
 );
 

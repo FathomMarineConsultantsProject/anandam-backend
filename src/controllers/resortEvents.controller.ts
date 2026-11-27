@@ -16,6 +16,7 @@ const details = {
   occurrences: { orderBy: { startAt: "asc" as const } },
   allocations: { include: { roomType: { select: { id: true, name: true, quantity: true } } } },
   images: { orderBy: { sortOrder: "asc" as const } },
+  childrenDetails: true,
 };
 
 type MutableEvent = Partial<{
@@ -96,6 +97,81 @@ function scalarChanges(body: Record<string, unknown>): MutableEvent {
   return data;
 }
 
+// A child listing is an ordinary event (or multi-day retreat) with a
+// one-to-one child-specific record. No changes to the existing event enum.
+const CHILD_AGE_GROUPS = new Set(["4-7", "8-12", "13-17", "OTHER"]);
+const GUARDIAN_POLICIES = new Set([
+  "REQUIRED_TO_STAY", "WELCOME_TO_STAY", "DROP_OFF_PICK_UP",
+]);
+
+type ChildrenData = {
+  ageGroups?: string[];
+  minimumAge?: number | null;
+  maximumAge?: number | null;
+  guardianPolicy?: string | null;
+  maxAccompanyingAdultsPerChild?: number | null;
+  guardianParticipationIncluded?: boolean | null;
+  additionalAdultPrice?: Prisma.Decimal | null;
+  childrenPerPackage?: number | null;
+  guardianInstructions?: string | null;
+};
+
+function parsedChildrenDetails(value: unknown): ChildrenData | null {
+  if (value === null) return null;
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new ResortApiError(422, "INVALID_CHILD_DETAILS", "childrenDetails must be an object or null.");
+  }
+  const body = value as Record<string, unknown>;
+  const result: ChildrenData = {};
+  if (Object.prototype.hasOwnProperty.call(body, "ageGroups")) {
+    if (!Array.isArray(body.ageGroups) || body.ageGroups.some(v => typeof v !== "string" || !CHILD_AGE_GROUPS.has(v))) {
+      throw new ResortApiError(422, "INVALID_AGE_GROUPS", "Choose age groups 4-7, 8-12, 13-17 or OTHER.");
+    }
+    const groups = body.ageGroups as string[];
+    result.ageGroups = [...new Set(groups)];
+  }
+  for (const key of ["minimumAge", "maximumAge"] as const) {
+    if (Object.prototype.hasOwnProperty.call(body, key)) {
+      result[key] = body[key] === null || body[key] === "" ? null : wholeNumber(body[key], key, 0, 17);
+    }
+  }
+  if (Object.prototype.hasOwnProperty.call(body, "guardianPolicy")) {
+    const val = body.guardianPolicy;
+    if (val !== null && (typeof val !== "string" || !GUARDIAN_POLICIES.has(val))) {
+      throw new ResortApiError(422, "INVALID_GUARDIAN_POLICY", "Choose a valid guardian participation policy.");
+    }
+    result.guardianPolicy = val as string | null;
+  }
+  for (const key of ["maxAccompanyingAdultsPerChild", "childrenPerPackage"] as const) {
+    if (Object.prototype.hasOwnProperty.call(body, key)) {
+      result[key] = body[key] === null || body[key] === "" ? null : wholeNumber(body[key], key, key === "childrenPerPackage" ? 1 : 0, 100);
+    }
+  }
+  if (Object.prototype.hasOwnProperty.call(body, "guardianParticipationIncluded")) {
+    const val = body.guardianParticipationIncluded;
+    if (val !== null && typeof val !== "boolean") {
+      throw new ResortApiError(422, "INVALID_GUARDIAN_INCLUDED", "guardianParticipationIncluded must be true, false or null.");
+    }
+    result.guardianParticipationIncluded = val as boolean | null;
+  }
+  if (Object.prototype.hasOwnProperty.call(body, "additionalAdultPrice")) {
+    const val = body.additionalAdultPrice;
+    if (val === null || val === "") result.additionalAdultPrice = null;
+    else if (!/^\d{1,10}(\.\d{1,2})?$/.test(String(val))) {
+      throw new ResortApiError(422, "INVALID_ADULT_PRICE", "Enter a valid non-negative adult price.");
+    } else result.additionalAdultPrice = new Prisma.Decimal(String(val));
+  }
+  if (Object.prototype.hasOwnProperty.call(body, "guardianInstructions")) {
+    result.guardianInstructions = optionalText(body.guardianInstructions, "guardianInstructions", 10000);
+  }
+  const min = result.minimumAge;
+  const max = result.maximumAge;
+  if (min != null && max != null && min > max) {
+    throw new ResortApiError(422, "INVALID_AGE_RANGE", "Minimum age cannot exceed maximum age.");
+  }
+  return result;
+}
+
 function parsedOccurrences(value: unknown) {
   if (!Array.isArray(value) || value.length > 50) {
     throw new ResortApiError(422, "INVALID_OCCURRENCES", "occurrences must be an array with no more than 50 schedules.");
@@ -159,6 +235,18 @@ async function replaceEventDetails(tx: Tx, propertyId: string, eventId: string, 
     await tx.resortEventRoomAllocation.deleteMany({ where: { eventId } });
     if (allocations.length) {
       await tx.resortEventRoomAllocation.createMany({ data: allocations.map(row => ({ ...row, eventId })) });
+    }
+  }
+  if (Object.prototype.hasOwnProperty.call(body, "childrenDetails")) {
+    const changes = parsedChildrenDetails(body.childrenDetails);
+    if (changes === null) {
+      await tx.resortChildrenEventDetails.deleteMany({ where: { eventId } });
+    } else {
+      await tx.resortChildrenEventDetails.upsert({
+        where: { eventId },
+        create: { eventId, ...changes },
+        update: changes,
+      });
     }
   }
   return tx.resortEvent.findUniqueOrThrow({ where: { id: eventId }, include: details });
@@ -240,6 +328,21 @@ export const publishEvent = guarded(async (req, res) => {
     if (!current.cancellationPolicy?.trim()) needed.push("cancellationPolicy");
     if (!current.images.some(i => i.kind === "COVER")) needed.push("coverPhoto");
     if (current.accommodationIncluded && !current.allocations.length) needed.push("roomAllocations");
+    if (current.childrenDetails) {
+      const child = current.childrenDetails;
+      if (!child.ageGroups.length) needed.push("childrenDetails.ageGroups");
+      if (child.ageGroups.includes("OTHER") &&
+        (child.minimumAge === null || child.maximumAge === null || child.minimumAge > child.maximumAge)) {
+        needed.push("childrenDetails.minimumAge/maximumAge");
+      }
+      if (!child.guardianPolicy) needed.push("childrenDetails.guardianPolicy");
+      if (child.guardianPolicy !== "DROP_OFF_PICK_UP" && child.guardianParticipationIncluded === null) {
+        needed.push("childrenDetails.guardianParticipationIncluded");
+      }
+      if (current.pricingType === ResortEventPricingType.PER_PACKAGE && !child.childrenPerPackage) {
+        needed.push("childrenDetails.childrenPerPackage");
+      }
+    }
     if (needed.length) {
       throw new ResortApiError(422, "EVENT_INCOMPLETE", `Complete the following fields: ${needed.join(", ")}.`);
     }

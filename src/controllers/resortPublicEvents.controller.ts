@@ -57,6 +57,7 @@ export async function listPublishedResortEvents(req: Request, res: Response) {
     const search = optionalQuery(req.query.search);
     const city = optionalQuery(req.query.city);
     const requestedType = optionalQuery(req.query.type);
+    const childrenOnly = req.query.children === "true";
     const dateText = optionalQuery(req.query.date, 10);
     const bounds = dateText ? dateBounds(dateText) : null;
 
@@ -72,6 +73,7 @@ export async function listPublishedResortEvents(req: Request, res: Response) {
     const now = new Date();
     const where: Prisma.ResortEventWhereInput = {
       ...publicOnly(),
+      ...(childrenOnly ? { childrenDetails: { isNot: null } } : {}),
       ...(requestedType ? { listingType: requestedType as ResortEventType } : {}),
       ...(city ? {
         property: { is: {
@@ -112,6 +114,7 @@ export async function listPublishedResortEvents(req: Request, res: Response) {
           accommodationIncluded: true,
           publishedAt: true,
           property: { select: PUBLIC_PROPERTY },
+          childrenDetails: true,
           images: { where: { kind: "COVER" }, select: { url: true }, take: 1 },
           occurrences: {
             where: { endAt: { gte: now } },
@@ -163,6 +166,7 @@ export async function getPublishedResortEvent(req: Request, res: Response) {
         cancellationPolicy: true,
         publishedAt: true,
         property: { select: PUBLIC_PROPERTY },
+        childrenDetails: true,
         images: { orderBy: [{ kind: "asc" }, { sortOrder: "asc" }], select: { kind: true, url: true } },
         occurrences: {
           where: { endAt: { gte: new Date() } },

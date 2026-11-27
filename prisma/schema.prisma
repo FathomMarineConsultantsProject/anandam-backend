@@ -1958,6 +1958,7 @@ model ResortEvent {
   allocations           ResortEventRoomAllocation[]
   roomHolds             ResortEventRoomHold[]
   images                ResortEventImage[]
+  childrenDetails       ResortChildrenEventDetails?
   createdAt             DateTime                    @default(now())
   updatedAt             DateTime                    @updatedAt
 
@@ -2080,4 +2081,22 @@ model ResortRoomBlock {
 
   @@index([propertyId, startDate, endDateExclusive])
   @@index([roomUnitId, startDate, endDateExclusive])
+}
+
+// Children's event fields are kept in a separate 1-to-1 table so existing
+// events and resort management tables are unchanged.
+model ResortChildrenEventDetails {
+  eventId                         String      @id
+  event                           ResortEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  ageGroups                       String[]    @default([])
+  minimumAge                      Int?
+  maximumAge                      Int?
+  guardianPolicy                  String?
+  maxAccompanyingAdultsPerChild   Int?
+  guardianParticipationIncluded   Boolean?
+  additionalAdultPrice            Decimal?    @db.Decimal(12, 2)
+  childrenPerPackage              Int?
+  guardianInstructions            String?     @db.Text
+  createdAt                       DateTime    @default(now())
+  updatedAt                       DateTime    @updatedAt
 }

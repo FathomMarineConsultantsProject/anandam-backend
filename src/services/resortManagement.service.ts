@@ -50,7 +50,8 @@ export async function transaction<T>(run: (tx: Tx) => Promise<T>): Promise<T> {
     try {
       return await prisma.$transaction(run, {
         isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
-        timeout: 20000,
+        maxWait: 5000,
+        timeout: 10000,
       });
     } catch (error) {
       if (

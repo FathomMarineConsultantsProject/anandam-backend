@@ -5,6 +5,7 @@ import { AuthRequest } from "../middleware/auth.middleware";
 import {
   calculateWorkRestSummary,
 } from "../utils/mlcCompliance";
+import { calculateRollingWorkRestSummary } from "../utils/mlcComplianceRolling";
 
 const prisma = new PrismaClient();
 
@@ -768,6 +769,10 @@ const buildDayResponse =
         record?.statusBlocks
       );
 
+    // Save a separate, unmodified view for compliance. Historically,
+    // completed days display unentered slots as REST; that display
+    // convenience is NOT evidence of recorded rest under MLC 2.3.
+    let complianceBlocks = [...blocks];
 
     blocks =
       finalizePastDayBlocks(
@@ -842,6 +847,15 @@ const buildDayResponse =
           gridNow,
           "WORK"
         );
+
+      // An active session must also be counted in the MLC screen.
+      complianceBlocks = applyIntervalToBlocks(
+        complianceBlocks,
+        dayStart,
+        toIstGridTime(session.startedAt),
+        gridNow,
+        "WORK"
+      );
     }
 
 
@@ -853,6 +867,38 @@ const buildDayResponse =
           session.endedAt === null
       ) ?? null;
 
+
+    // Read preceding seven calendar days for moving 24-hour and
+    // seven-day windows. The original 48-slot day response is preserved.
+    // The new read-only screen must NEVER prevent an existing clock-in,
+    // clock-out, manual entry, or slot update from returning successfully.
+    let rollingCompliance: ReturnType<typeof calculateRollingWorkRestSummary> | {
+      complianceStatus: "INCOMPLETE";
+      complianceRate: null;
+      violationCount: null;
+      violations: null;
+      missingElapsedSlots: null;
+    } = {
+      complianceStatus: "INCOMPLETE",
+      complianceRate: null,
+      violationCount: null,
+      violations: null,
+      missingElapsedSlots: null,
+    };
+    try {
+      const complianceRecords = await prisma.dailyWorkHours.findMany({
+        where: {
+          userId,
+          date: { gte: addDays(dayStart, -7), lte: dayStart },
+        },
+        select: { date: true, statusBlocks: true },
+      });
+      rollingCompliance = calculateRollingWorkRestSummary(
+        dayStart, complianceRecords, now, complianceBlocks
+      );
+    } catch (screeningError) {
+      console.error("Non-blocking Work/Rest MLC screening error:", screeningError);
+    }
 
     return {
       id:
@@ -874,10 +920,12 @@ const buildDayResponse =
 
       activeSession,
 
-      summary:
-        calculateWorkRestSummary(
-          blocks
-        ),
+      // All previous summary fields are preserved. New validation
+      // details live in `summary.mlcScreening` and use saved raw entries.
+      summary: {
+        ...calculateWorkRestSummary(blocks),
+        mlcScreening: rollingCompliance,
+      },
     };
   };
 
@@ -1917,11 +1965,9 @@ export const createManualWorkSession =
           );
 
 
-        const blocks =
-          finalizePastDayBlocks(
-            rawBlocks,
-            gridDate
-          );
+        // Do not confuse unrecorded slots visually auto-shown as REST
+        // with explicit REST/MEAL. Protect genuinely recorded entries.
+        const blocks = rawBlocks;
 
 
         const conflicts =
@@ -2434,10 +2480,26 @@ export const getMyWorkRestHistory =
               statusBlocks:
                 blocks,
 
-              summary:
-                calculateWorkRestSummary(
-                  blocks
-                ),
+              summary: {
+                ...calculateWorkRestSummary(blocks),
+                mlcScreening: (() => {
+                  try {
+                    return calculateRollingWorkRestSummary(
+                      record.date, records, new Date(),
+                      normalizeBlocks(record.statusBlocks)
+                    );
+                  } catch (screeningError) {
+                    console.error("Work/Rest history MLC screening error:", screeningError);
+                    return {
+                      complianceStatus: "INCOMPLETE" as const,
+                      complianceRate: null,
+                      violationCount: null,
+                      violations: null,
+                      missingElapsedSlots: null,
+                    };
+                  }
+                })(),
+              },
             };
           }
         );
@@ -2959,11 +3021,9 @@ export const updateWorkSession =
       // Build the conflict view BEFORE clearing the old work range.
       // Existing WORK is not a REST/MEAL conflict, while untouched
       // past-day UNRECORDED slots are treated as automatic REST.
-      const conflictBlocks =
-        finalizePastDayBlocks(
-          blocks,
-          gridDate
-        );
+      // Validate the saved slots, not auto-displayed historical REST.
+      // Explicit REST/MEAL protection remains unchanged.
+      const conflictBlocks = blocks;
 
       /*
         Remove the old visual work range first.

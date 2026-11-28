@@ -55,6 +55,8 @@ export interface RollingComplianceSummary {
   fullyRecorded7DayWindows: number;
   checked24hWindows: number;
   checked7DayWindows: number;
+  passed24hWindows: number;
+  passed7DayWindows: number;
   periodTimeZone: string;
 }
 
@@ -157,6 +159,8 @@ export function calculateRollingWorkRestSummary(
   let fullyRecorded7DayWindows = 0;
   let checked24hWindows = 0;
   let checked7DayWindows = 0;
+  let passed24hWindows = 0;
+  let passed7DayWindows = 0;
 
   function flag(
     code: string,
@@ -192,7 +196,13 @@ export function calculateRollingWorkRestSummary(
     const rest24Slots = count(dayWindow, "REST");
     const unknown24Slots = count(dayWindow, "UNRECORDED");
     const complete24 = unknown24Slots === 0;
-    if (complete24) fullyRecorded24hWindows += 1;
+    if (complete24) {
+      fullyRecorded24hWindows += 1;
+      if (work24Slots <= 28 && rest24Slots >= 20 &&
+          longestRun(dayWindow, status => status === "WORK" || status === "MEAL") <= 28) {
+        passed24hWindows += 1;
+      }
+    }
 
     if (work24Slots > 28) {
       flag("WORK_24H", "Over 14 hours work in 24 hours",
@@ -213,14 +223,19 @@ export function calculateRollingWorkRestSummary(
     // selected calendar day conservatively and allow an unknown extension
     // at the next midnight (we have not loaded the following day).
     if (i === SLOTS_PER_DAY && complete24) {
-      const restAcrossBoundary = [
-        ...timeline.slice(endTick - SLOTS_PER_DAY - 12, endTick - SLOTS_PER_DAY),
-        ...dayWindow,
-        ...Array<GridStatus>(12).fill("UNRECORDED"),
-      ];
+      const preceding12 = timeline.slice(endTick - SLOTS_PER_DAY - 12, endTick - SLOTS_PER_DAY);
+      const following12 = (recordMap.get(dayKeyByOffset(selectedKey, 1)) ??
+        Array<GridStatus>(SLOTS_PER_DAY).fill("UNRECORDED")).slice(0, 12);
       const longestConfirmed = longestRun(dayWindow, s => s === "REST");
-      const longestPossible = longestRun(restAcrossBoundary, s => s === "REST" || s === "UNRECORDED");
-      if (longestConfirmed < 12 && longestPossible < 12) {
+      // Boundary extensions are possible only when a REST period actually
+      // touches that boundary. Unknown time alone must NOT invent six hours.
+      const possibleFromBefore = dayWindow[0] === "REST" &&
+        longestRun([...preceding12, ...dayWindow.slice(0, 12)], s =>
+          s === "REST" || s === "UNRECORDED") >= 12;
+      const possibleAfter = dayWindow[47] === "REST" &&
+        longestRun([...dayWindow.slice(-12), ...following12], s =>
+          s === "REST" || s === "UNRECORDED") >= 12;
+      if (longestConfirmed < 12 && !possibleFromBefore && !possibleAfter) {
         flag("REST_CONTINUOUS_6H", "No continuous six-hour rest period",
           "No qualifying continuous six-hour rest period is possible from the recorded daily pattern.",
           endTick - SLOTS_PER_DAY, endTick, longestConfirmed / 2, 6);
@@ -241,7 +256,10 @@ export function calculateRollingWorkRestSummary(
     const work7Slots = count(sevenDayWindow, "WORK");
     const rest7Slots = count(sevenDayWindow, "REST");
     const unknown7Slots = count(sevenDayWindow, "UNRECORDED");
-    if (unknown7Slots === 0) fullyRecorded7DayWindows += 1;
+    if (unknown7Slots === 0) {
+      fullyRecorded7DayWindows += 1;
+      if (work7Slots <= 144 && rest7Slots >= 154) passed7DayWindows += 1;
+    }
 
     if (work7Slots > 144) {
       flag("WORK_7D", "Over 72 hours work in seven days",
@@ -267,6 +285,15 @@ export function calculateRollingWorkRestSummary(
       ? "INCOMPLETE"
       : "COMPLIANT";
 
+  // Percentage of evaluable rolling windows passing quantitative limits.
+  // This is a SCREENING metric, not a certificate of flag-State compliance.
+  // An unresolved window is never included as a pass.
+  const evaluatedWindows = fullyRecorded24hWindows + fullyRecorded7DayWindows;
+  const passedWindows = passed24hWindows + passed7DayWindows;
+  const screenedRate = evaluatedWindows > 0
+    ? Math.round((passedWindows / evaluatedWindows) * 100)
+    : violations.length > 0 ? 0 : null;
+
   return {
     hoursWorked: count(selectedBlocks, "WORK") / 2,
     workHours: count(selectedBlocks, "WORK") / 2,
@@ -276,7 +303,7 @@ export function calculateRollingWorkRestSummary(
     unrecordedHours: count(selectedBlocks, "UNRECORDED") / 2,
     violationCount: violations.length,
     violations,
-    complianceRate: complianceStatus === "COMPLIANT" ? 100 : complianceStatus === "NON_COMPLIANT" ? 0 : null,
+    complianceRate: screenedRate,
     complianceStatus,
     isCompliant: complianceStatus === "COMPLIANT" ? true : complianceStatus === "NON_COMPLIANT" ? false : null,
     incompleteRecord,
@@ -285,6 +312,8 @@ export function calculateRollingWorkRestSummary(
     fullyRecorded7DayWindows,
     checked24hWindows,
     checked7DayWindows,
+    passed24hWindows,
+    passed7DayWindows,
     periodTimeZone: "Asia/Kolkata",
   };
 }

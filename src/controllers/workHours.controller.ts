@@ -2527,6 +2527,137 @@ export const getMyWorkRestHistory =
     }
   };
 
+// ======================================================
+// MONTHLY COMPLIANCE SCREENING (READ-ONLY)
+// GET /api/work-hours/compliance/month/:month (YYYY-MM)
+// All existing Work/Rest write handlers remain unchanged.
+// ======================================================
+
+export const getMonthlyWorkRestCompliance = async (
+  req: AuthRequest,
+  res: Response
+): Promise<any> => {
+  try {
+    const userId = req.user?.userId;
+    if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
+    const monthString = getParam(req.params.month);
+    if (!monthString || !/^\d{4}-(0[1-9]|1[0-2])$/.test(monthString)) {
+      return res.status(400).json({ error: "Month must be YYYY-MM." });
+    }
+
+    const year = Number(monthString.slice(0, 4));
+    const monthNumber = Number(monthString.slice(5, 7));
+    const monthFirst = new Date(Date.UTC(year, monthNumber - 1, 1));
+    const nextMonth = new Date(Date.UTC(year, monthNumber, 1));
+    const monthLast = addDays(nextMonth, -1);
+    const now = new Date();
+    const todayIst = toIstGridTime(now).toISOString().slice(0, 10);
+
+    // Fetch once for the entire month, plus seven preceding dates needed
+    // for rolling seven-day checks on the first days of the month.
+    const records = await prisma.dailyWorkHours.findMany({
+      where: {
+        userId,
+        date: { gte: addDays(monthFirst, -7), lt: nextMonth },
+      },
+      select: { date: true, statusBlocks: true },
+    });
+
+    // Overlay the live clock-in session for READ-ONLY monthly screening.
+    // The existing clock-in/out storage and 48-slot grid are not changed.
+    const liveSession = await prisma.workSession.findFirst({
+      where: { userId, status: "ACTIVE", endedAt: null },
+      orderBy: { startedAt: "desc" },
+    });
+    if (liveSession) {
+      const byKey = new Map(records.map(record => [record.date.toISOString().slice(0, 10), record]));
+      const liveStart = toIstGridTime(liveSession.startedAt);
+      const liveEnd = toIstGridTime(now);
+      const firstFetchedDate = addDays(monthFirst, -7);
+      let cursor = getDayStart(liveStart);
+      if (cursor < firstFetchedDate) cursor = firstFetchedDate;
+      for (; cursor < liveEnd && cursor < nextMonth; cursor = addDays(cursor, 1)) {
+        const key = cursor.toISOString().slice(0, 10);
+        const existing = byKey.get(key);
+        const statusBlocks = applyIntervalToBlocks(
+          normalizeBlocks(existing?.statusBlocks), cursor, liveStart, liveEnd, "WORK"
+        );
+        byKey.set(key, { date: cursor, statusBlocks });
+      }
+      records.splice(0, records.length, ...byKey.values());
+    }
+
+    const days: Array<{
+      date: string;
+      complianceStatus: "COMPLIANT" | "NON_COMPLIANT" | "INCOMPLETE";
+      violationCount: number;
+      complianceRate: number | null;
+      hoursWorked: number;
+      restRecorded: number;
+      missingElapsedSlots: number;
+      violations: ReturnType<typeof calculateRollingWorkRestSummary>["violations"];
+    }> = [];
+    let compliantDays = 0;
+    let nonCompliantDays = 0;
+    let incompleteDays = 0;
+    let totalWorkHours = 0;
+    let totalRestHours = 0;
+
+    for (let day = monthFirst; day <= monthLast; day = addDays(day, 1)) {
+      const date = day.toISOString().slice(0, 10);
+      if (date > todayIst) break;
+
+      const screening = calculateRollingWorkRestSummary(day, records, now);
+      if (screening.complianceStatus === "COMPLIANT") compliantDays += 1;
+      else if (screening.complianceStatus === "NON_COMPLIANT") nonCompliantDays += 1;
+      else incompleteDays += 1;
+
+      totalWorkHours += screening.hoursWorked;
+      totalRestHours += screening.restRecorded;
+      days.push({
+        date,
+        complianceStatus: screening.complianceStatus,
+        violationCount: screening.violationCount,
+        complianceRate: screening.complianceRate,
+        hoursWorked: screening.hoursWorked,
+        restRecorded: screening.restRecorded,
+        missingElapsedSlots: screening.missingElapsedSlots,
+        violations: screening.violations,
+      });
+    }
+
+    const assessedDays = compliantDays + nonCompliantDays;
+    // Never claim that an unrecorded or incomplete day is compliant.
+    // This measures compliant days among days with a definitive screening
+    // outcome; the incomplete-day count must be presented beside the rate.
+    const monthlyComplianceRate = assessedDays > 0
+      ? Math.round((compliantDays / assessedDays) * 100)
+      : null;
+
+    return res.status(200).json({
+      status: "success",
+      data: {
+        month: monthString,
+        complianceRate: monthlyComplianceRate,
+        assessedDays,
+        compliantDays,
+        nonCompliantDays,
+        incompleteDays,
+        totalWorkHours: Math.round(totalWorkHours * 10) / 10,
+        totalRestHours: Math.round(totalRestHours * 10) / 10,
+        days,
+        periodTimeZone: "Asia/Kolkata",
+        description: "Percentage of definitively screened days without a confirmed breach. Incomplete days are excluded, not treated as compliant.",
+      },
+    });
+  } catch (error) {
+    console.error("Monthly work/rest compliance error:", error);
+    return res.status(500).json({ error: "Failed to calculate monthly compliance" });
+  }
+};
+
+
   // ======================================================
 // UPDATE COMMENT OF THE DAY
 // PATCH /api/work-hours/day/:date/comment
